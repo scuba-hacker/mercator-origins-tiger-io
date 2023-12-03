@@ -119,8 +119,6 @@ const navigationWaypoint waypoints[] =
   [110] = { ._label = "Sub NE2", ._lat = 51.4610231, ._long = -0.5490675},
   [111] = { ._label = "Sub SE2", ._lat =  51.460884, ._long = -0.5490634},
   [112] = { ._label = "Sub SW2", ._lat = 51.4608861, ._long = -0.5492377},
-
-
 };
 
 const uint8_t waypointCount = sizeof(waypoints)/sizeof(navigationWaypoint);

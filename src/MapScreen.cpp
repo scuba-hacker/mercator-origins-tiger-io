@@ -20,35 +20,6 @@ static const int16_t o = 10;
 static const uint8_t exitWaypointCount = 4;
 static const navigationWaypoint* exitWaypoints[exitWaypointCount];
 
-
-class mypixel
-{
-  public:
-    mypixel() : x(0), y(0), colour(0) {}
-    mypixel(int16_t xx, int16_t yy, uint16_t colourr) : x(xx), y(yy), colour(colourr) {}
-   mypixel(int16_t xx, int16_t yy) : x(xx), y(yy), colour(0) {}
-
-    int16_t x;
-    int16_t y;
-    uint16_t colour;
-};
-
-const mypixel regPixels[] =
-{
-/*{ .x   .y     .colour}*/
-  { o,    o,      0xFF00},
-  { hX-o, o,      0xFF00},
-  { o,    hY-o,   0xFF00},
-};
-
-const MapScreen::pixel regPixels3[] =
-{
-/*{ .x   .y     .colour}*/
-  { .x=o,    .y=o,      .colour=0xFF00},
-  { .x=hX-o,    .y=o,      .colour=0xFF00},
-  { .x=o,    .y=hY-o,      .colour=0xFF00},
-};
-
 const geo_map MapScreen::s_maps[] =
 {
   [0] = { .mapData = w1_1, .label="North", .backColour=TFT_BLACK, .backText="", .surveyMap=false, .swapBytes=true, .mapLongitudeLeft = -0.55, .mapLongitudeRight = -0.548, .mapLatitudeBottom = 51.4604},
@@ -106,56 +77,7 @@ static const MapScreen::pixel mapOffsets[16]=
   [14] = { .x=-42, .y=-48 },   // map 3 to 2
   [15] = { .x=0, .y=0 },   // map 3 to 3
 };
-/*
-static const int registrationPixelsSize2=16;
-static const MapScreen::pixel registrationPixels2[registrationPixelsSize2] =
-{
-// { .x   .y     .colour}
-  { o,    o,    0xFF00},
-  { hX-o, o,    0xFF00},
-  { o,    hY-o, 0xFF00},
-  { hX-o, hY-o, 0xFF00},
-    
-  { hX+o, o,    0xFFFF},
-  { mX-o, o,    0xFFFF},
-  { hX+o, hY-o, 0xFFFF},
-  { mX-o, hY-o, 0xFFFF},
 
-  { o,    hY+o, 0x00FF},
-  { hX-o, hY+o, 0x00FF},
-  { o,    mY-o, 0x00FF},
-  { hX-o, mY-o, 0x00FF},
-
-  { hX+o, hY+o, 0x0000},
-  { mX-o, hY+o, 0x0000},
-  { hX+o, mY-o, 0x0000},
-  { mX-o, mY-o, 0x0000},
-};
-
-static const MapScreen::pixel mapOffsets[16]=
-{
-// { .x   .y}
-  {0,0 },       // map 0 to 0
-  {30,116 },    // map 0 to 1
-  {144,171 },   // map 0 to 2
-  {186,219 },   // map 0 to 3
-      
-  {-30,-116 },  // map 1 to 0
-  {0,0},        // map 1 to 1
-  {114,55 },    // map 1 to 2
-  {156,103 },   // map 1 to 3
-
-  {-144,-171},   // map 2 to 0
-  {-114,-55 },   // map 2 to 1
-  {0,0 },        // map 2 to 2
-  {42,48 },      // map 2 to 3
-
-  {-186,-219 },   // map 3 to 0
-  {-156,-103 },   // map 3 to 1
-  {-42,-48 },     // map 3 to 2
-  {0,0 },         // map 3 to 3
-};
-*/
 const uint16_t MapScreen::s_diverSpriteColour = TFT_BLUE;
 const uint16_t MapScreen::s_featureSpriteColour = TFT_MAGENTA;
 
@@ -517,8 +439,9 @@ void MapScreen::drawDiverOnBestFeaturesMapAtCurrentZoom(const double diverLatitu
         _cleanMapAndFeaturesSprite->pushImageScaled(0, 0, s_imgWidth, s_imgHeight, _zoom, _tileXToDisplay, _tileYToDisplay, 
                                                     nextMap->mapData, nextMap->swapBytes);
         if (_drawAllFeatures)
-          drawFeaturesOnCleanMapSprite(nextMap);
-        drawRegistrationPixelsOnCleanMapSprite(nextMap);    // Test Pattern
+          drawFeaturesOnCleanMapSprite(nextMap);        
+          
+//      drawRegistrationPixelsOnCleanMapSprite(nextMap);    // Test Pattern
       }
       else
       {
@@ -664,25 +587,26 @@ MapScreen::pixel MapScreen::scalePixelForZoomedInTile(const pixel p, int16_t& ti
   tileX = p.x / (s_imgWidth / _zoom);
   tileY = p.y / (s_imgHeight / _zoom);
 
-  MapScreen::pixel pScaled;
+  pixel pScaled;
   if (tileX < _zoom && tileY < _zoom)
   {
-    pScaled.x * _zoom - (s_imgWidth)  * tileX;
-    pScaled.y * _zoom - (s_imgHeight) * tileY;
+    pScaled.x = p.x * _zoom - (s_imgWidth)  * tileX;
+    pScaled.y = p.y * _zoom - (s_imgHeight) * tileY;
   }
   else
   {
-    pScaled.x * _zoom;
-    pScaled.y * _zoom;
+    pScaled.x = p.x * _zoom;
+    pScaled.y = p.y * _zoom;
     tileX = tileY = 0;
   }
 
-  pScaled.colour;
+  pScaled.colour = p.colour;
 
 //  debugScaledPixelForTile(p, pScaled, tileX,tileY);
 
   return pScaled;
 }
+
 
 double MapScreen::distanceBetween(double lat1, double long1, double lat2, double long2) const
 {
@@ -751,8 +675,8 @@ int MapScreen::drawDirectionLineOnCompositeSprite(const double diverLatitude, co
     if (!isPixelOutsideScreenExtent(convertGeoToPixelDouble(waypoint->_lat, waypoint->_long, featureMap)))
     {
       // use line between diver and target locations
-      pTarget.x * _zoom - s_imgWidth * diverTileX;
-      pTarget.y * _zoom - s_imgHeight * diverTileY;
+      pTarget.x = pTarget.x * _zoom - s_imgWidth * diverTileX;
+      pTarget.y = pTarget.y * _zoom - s_imgHeight * diverTileY;
 
       _compositedScreenSprite->drawLine(pDiver.x, pDiver.y, pTarget.x,pTarget.y,colour);
   
@@ -774,8 +698,8 @@ int MapScreen::drawDirectionLineOnCompositeSprite(const double diverLatitude, co
       pixel pHeading;
     
       double rads = heading * PI / 180.0;  
-      pHeading.x + indicatorLength * sin(rads);
-      pHeading.y - indicatorLength * cos(rads);
+      pHeading.x = pDiver.x + indicatorLength * sin(rads);
+      pHeading.y = pDiver.y - indicatorLength * cos(rads);
 
       _compositedScreenSprite->drawLine(pDiver.x, pDiver.y, pHeading.x,pHeading.y,colour);
     
@@ -799,8 +723,9 @@ void MapScreen::drawHeadingLineOnCompositeMapSprite(const double diverLatitude, 
   pixel pHeading;
 
   double rads = heading * PI / 180.0;  
-  pHeading.x + hypotoneuse * sin(rads);
-  pHeading.y - hypotoneuse * cos(rads);
+  pHeading.x = pDiver.x + hypotoneuse * sin(rads);
+  pHeading.y = pDiver.y - hypotoneuse * cos(rads);
+
 
   _compositedScreenSprite->drawLine(pDiver.x, pDiver.y, pHeading.x,pHeading.y,TFT_BLUE);
 
