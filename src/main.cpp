@@ -25,6 +25,9 @@ bool goProButtonsPrimaryControl = false;
 const bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
 const bool enableESPNow = !enableOTAServerAtStartup; // cannot have OTA server on regular wifi and espnow concurrently running
 
+const String ssid_not_connected = "-";
+String ssid_connected;
+
 // ************** ESPNow variables **************
 
 uint16_t ESPNowMessagesDelivered = 0;
@@ -42,6 +45,7 @@ const int RESET_ESPNOW_SEND_RESULT = 0xFF;
 esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
 
 char mako_espnow_buffer[256];
+char currentTime[9];
 
 QueueHandle_t msgsReceivedQueue;
 
@@ -110,7 +114,8 @@ long milliSecondsToWaitForShutDown=1000;
 char rxQueueItemBuffer[256];
 const uint8_t queueLength=4;
 
-char currentTarget[256];
+char currentTarget[128];
+char previousTarget[128];
 bool refreshTargetShown = false;
 
 void shutdownIfUSBPowerOff();
@@ -122,6 +127,7 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
 void vfd_3_line_clock();
 void vfd_5_current_target();
 void vfd_6_map();
+void getTime(char* time);
 void draw_digits(int h1, int h2, int i1, int i2, int s1, int s2);
 void draw_digit_text(int h1, int h2, int i1, int i2, int s1, int s2);
 void resetCurrentTarget();
@@ -293,11 +299,14 @@ void setup()
   
   dumpHeapUsage("Setup(): start");
 
+  ssid_connected = ssid_not_connected;
+
   // Serial.println("Managed to allocate 2 x 8-bit 320x240 = 76800 bytes");
   
   if (writeLogToSerial)
     USB_SERIAL.begin(115200);
 
+  strncpy(previousTarget,"None",sizeof(previousTarget));
   strncpy(currentTarget,"  No\nTarget\n  Set\n From\n Mako",sizeof(currentTarget));
 
   pinMode(UNUSED_GPIO_36_PIN,INPUT);
@@ -437,6 +446,7 @@ void readAndTestGoProReedSwitches()
 void resetCurrentTarget()
 {
   refreshTargetShown = true;
+  M5.Lcd.fillScreen(BLACK);
   mode_ = 5;
 }
 
@@ -692,44 +702,63 @@ void loop()
     {
       switch(rxQueueItemBuffer[0])
       {
-        case 'c':   // current target
-        {
-          strncpy(currentTarget,rxQueueItemBuffer+1,sizeof(currentTarget));
-          refreshTargetShown = true;
-          break;
-        }
-
         case 'l':   // Bright light detected by Mako - switch to next screen
         {
           cycleDisplays();
           break;
         }
 
+        case 'c':   // current target
+        {
+          if (strcmp(rxQueueItemBuffer+1,currentTarget) != 0)
+          {
+            strncpy(previousTarget,currentTarget,sizeof(previousTarget));
+            strncpy(currentTarget,rxQueueItemBuffer+1,sizeof(currentTarget));
+            refreshTargetShown = true;
+          }
+          break;
+        }
+
         case 'X':   // location, heading and current Target info.
         {
           // format: targetCode[7],lat,long,heading,targetText
-
+          const int targetCodeOffset = 1;
+          const int latitudeOffset = 8;
+          const int longitudeOffset = 16;
+          const int headingOffset = 24;
+          const int currentTargetOffset = 32;
+                    
           char targetCode[7];
 
-          strncpy(targetCode,rxQueueItemBuffer+1,sizeof(targetCode));
+          strncpy(targetCode,rxQueueItemBuffer + targetCodeOffset,sizeof(targetCode));
+          memcpy(&latitude,  rxQueueItemBuffer + latitudeOffset,  sizeof(double));
+          memcpy(&longitude, rxQueueItemBuffer + longitudeOffset, sizeof(double));
+          memcpy(&heading,   rxQueueItemBuffer + headingOffset, sizeof(double));
 
-          Serial.printf("targetCode: %s\n",targetCode);
+          if (strcmp(rxQueueItemBuffer+currentTargetOffset,currentTarget) != 0)
+          {
+            strncpy(previousTarget,currentTarget,sizeof(previousTarget));
+            strncpy(currentTarget,rxQueueItemBuffer+currentTargetOffset,sizeof(currentTarget));
+            refreshTargetShown = true;
+          }
 
-          memcpy(&latitude,  rxQueueItemBuffer+8,  8);
-          memcpy(&longitude, rxQueueItemBuffer+16, 8);
-          memcpy(&heading,   rxQueueItemBuffer+24, 8);
+//          strncpy(currentTarget,rxQueueItemBuffer + currentTargetOffset,sizeof(currentTarget));
 
-          Serial.printf("latitude: %f\n",latitude);
-          Serial.printf("longitude: %f\n",longitude);
-          Serial.printf("heading: %f\n",heading);
-
-          strncpy(currentTarget,rxQueueItemBuffer+32,sizeof(currentTarget));
-
-          Serial.printf("currentTarget: %s\n",currentTarget);
+          if (writeLogToSerial)
+          {
+            USB_SERIAL.printf("targetCode: %s\n",targetCode);
+            USB_SERIAL.printf("latitude: %f\n",latitude);
+            USB_SERIAL.printf("longitude: %f\n",longitude);
+            USB_SERIAL.printf("heading: %f\n",heading);
+            USB_SERIAL.printf("currentTarget: %s\n",currentTarget);
+          }
 
           mapScreen->setTargetWaypointByLabel(targetCode);
+
           if (mode_ == 6) // map on screen
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
+          else if (mode_ == 5 && refreshTargetShown)
+            resetCurrentTarget();
         }
         default:
         {
@@ -764,7 +793,7 @@ void vfd_6_map()
 
 void vfd_5_current_target()
 {
-  if (refreshTargetShown == true)
+  if (refreshTargetShown)
   {
     M5.Lcd.fillScreen(TFT_BLACK);
     refreshTargetShown = false;
@@ -774,14 +803,14 @@ void vfd_5_current_target()
   {    
     M5.Lcd.setCursor(0,0);
     M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_YELLOW);
+    M5.Lcd.setTextColor(TFT_YELLOW,TFT_BLACK);
     M5.Lcd.println(currentTarget);
   }
   else
   {
     M5.Lcd.setCursor(0,0);
     M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_RED);
+    M5.Lcd.setTextColor(TFT_RED,TFT_BLACK);
 
     if (!ESPNowActive)
       M5.Lcd.println("  No\nTarget\n\nESPNow\nIs Off\n");
@@ -790,7 +819,7 @@ void vfd_5_current_target()
     
     if (otaActive)
     {
-      M5.Lcd.setTextColor(TFT_GREEN);
+      M5.Lcd.setTextColor(TFT_GREEN,TFT_BLACK);
       M5.Lcd.println("OTA On\n");        
     }
     else
@@ -801,7 +830,12 @@ void vfd_5_current_target()
 
   M5.Lcd.setCursor(0, mode_label_y_offset+10);
   M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-  M5.Lcd.print("Towards");
+  M5.Lcd.println("Towards");
+  
+  M5.Lcd.setCursor(28, mode_label_y_offset+38);
+  M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+  getTime(currentTime);
+  M5.Lcd.printf("%s",currentTime);  
 }
 
 void draw_digits(int h1, int h2, int i1, int i2, int s1, int s2)
@@ -818,11 +852,8 @@ void draw_digit_text(int h1, int h2, int i1, int i2, int s1, int s2)
 
   M5.Lcd.setCursor(5,5);
   M5.Lcd.printf("%i%i",h1,h2);
-
-  M5.Lcd.setTextColor(TFT_ORANGE);
   M5.Lcd.setCursor(M5.Lcd.getCursorX()-10,M5.Lcd.getCursorY());
   M5.Lcd.printf(":\n",h1,h2);
-  M5.Lcd.setTextColor(TFT_ORANGE,TFT_BLACK);
   M5.Lcd.setCursor(M5.Lcd.getCursorX()+5,M5.Lcd.getCursorY());
   M5.Lcd.printf("%i%i",i1,i2);
 
@@ -863,6 +894,15 @@ void vfd_3_line_clock()
     M5.Lcd.setCursor(35, mode_label_y_offset+28);
     M5.Lcd.print("Time");
   }
+}
+
+void getTime(char* time)
+{    // Clock mode - Hours, mins, secs with optional date
+  M5.Rtc.GetTime(&RTC_TimeStruct);
+  M5.Rtc.GetDate(&RTC_DateStruct);
+  int h = int(RTC_TimeStruct.Hours);
+  int m = int(RTC_TimeStruct.Minutes);
+  snprintf(time,sizeof(currentTime),"%02d:%02d",h,m);
 }
 
 void updateButtonsAndBuzzer()
@@ -1021,7 +1061,6 @@ const char* scanForKnownNetwork() // return first known network found
 
   M5.Lcd.println("Scan WiFi\nSSIDs...");
   int8_t scanResults = WiFi.scanNetworks();
-  M5.Lcd.println("Complete");
 
   if (scanResults != 0)
   {
@@ -1221,7 +1260,18 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
     delay(1000);
   }
 
-  return WiFi.status() == WL_CONNECTED;
+  bool connected=WiFi.status() == WL_CONNECTED;
+  
+  if (connected)
+  {
+    ssid_connected = WiFi.SSID();
+  }
+  else
+  {
+    ssid_connected = ssid_not_connected;
+  }
+  
+  return connected;
 }
 
 // Scan for peers in AP mode
@@ -1229,7 +1279,7 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, co
 {
   bool peerFound = false;
   
-  M5.Lcd.print("Scan ESP...");
+  M5.Lcd.printf("Scan For\n%s\n",peerSSIDPrefix);
   int8_t scanResults = WiFi.scanNetworks();
   
   // reset on each scan 
@@ -1338,16 +1388,16 @@ bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int max
     if (result && peer.channel == ESPNOW_CHANNEL)
     { 
       isPaired = ESPNowManagePeer(peer);
-      M5.Lcd.setTextColor(TFT_GREEN);
-      M5.Lcd.printf("%s Pair ok\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_GREEN,TFT_BLACK);
+      M5.Lcd.printf("%s Pair\nok\n",peerSSIDPrefix);
       M5.Lcd.setTextColor(TFT_WHITE);
     }
     else
     {
       peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
-      M5.Lcd.setTextColor(TFT_RED);
-      M5.Lcd.printf("%s Pair fail\n",peerSSIDPrefix);
-      M5.Lcd.setTextColor(TFT_WHITE);
+      M5.Lcd.setTextColor(TFT_RED,TFT_BLACK);
+      M5.Lcd.printf("%s Pair\nfail\n",peerSSIDPrefix);
+      M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
     }
   }
 
