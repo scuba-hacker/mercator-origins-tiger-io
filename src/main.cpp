@@ -20,7 +20,7 @@
 #include "mercator_secrets.c"
 
 bool writeLogToSerial=false;
-bool goProButtonsPrimaryControl = false;
+bool goProButtonsPrimaryControl = true;
 
 const bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
 const bool enableESPNow = !enableOTAServerAtStartup; // cannot have OTA server on regular wifi and espnow concurrently running
