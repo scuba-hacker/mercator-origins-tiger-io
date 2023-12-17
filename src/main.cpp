@@ -146,6 +146,7 @@ void configESPNowDeviceAP();
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const bool suppressPeerFoundMsg = true);
+bool pairWithMako();
 bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int maxAttempts);
 bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts);
 bool ESPNowManagePeer(esp_now_peer_info_t& peer);
@@ -365,8 +366,18 @@ void setup()
   if (enableESPNow && msgsReceivedQueue)
   {
     configAndStartUpESPNow();
+    // defer pairing with mako for sending messages to mako until first message received from mako.
+  }
 
+  dumpHeapUsage("Setup(): end ");
+}
+
+bool pairWithMako()
+{
+  if (ESPNowActive && !isPairedWithMako)
+  {
     M5.Lcd.fillScreen(TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
     M5.Lcd.setCursor(0,0);
     const int pairAttempts = 5;
     isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
@@ -378,7 +389,7 @@ void setup()
     }
   }
 
-  dumpHeapUsage("Setup(): end ");
+  return isPairedWithMako;
 }
 
 void checkForLeak(const char* msg, const uint8_t pin)
@@ -715,6 +726,11 @@ void loop()
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
+      if (!isPairedWithMako)    // only pair with Mako once first message received from Mako.
+      {
+        pairWithMako();
+      }
+
       switch(rxQueueItemBuffer[0])
       {
         case 'l':   // Bright light detected by Mako - switch to next screen
@@ -756,8 +772,6 @@ void loop()
             strncpy(currentTarget,rxQueueItemBuffer+currentTargetOffset,sizeof(currentTarget));
             refreshTargetShown = true;
           }
-
-//          strncpy(currentTarget,rxQueueItemBuffer + currentTargetOffset,sizeof(currentTarget));
 
           if (writeLogToSerial)
           {
