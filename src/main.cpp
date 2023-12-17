@@ -184,9 +184,11 @@ void  initialiseRTCfromNTP()
 
   const bool wifiOnly = true;
 
-  delay(500);
-  
-  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,3))
+  M5.Lcd.println("Get Time...\n\n");
+  delay(1000);
+
+  const int maxWifiScanAttempts = 2;  
+  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts))
   {
     M5.Lcd.println("Wifi OK");
   
@@ -346,8 +348,13 @@ void setup()
 
   if (enableOTAServerAtStartup)
   {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    M5.Lcd.setCursor(0,0);
+    M5.Lcd.println("Start OTA\n\n");
+    delay(1000);
     const bool wifiOnly = false;
-    connectToWiFiAndInitOTA(wifiOnly,3);
+    const int maxWifiScanAttempts = 3;
+    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
   }
 
   initialiseRTCfromNTP();
@@ -609,16 +616,23 @@ bool checkReedSwitches()
       reedSwitchTop = false;
 
       TeardownESPNow();
-          
+      isPairedWithMako = false;
+
+      dumpHeapUsage("checkReedSwitches(): begin switch to OTA");
+
       // enable OTA
       const bool wifiOnly = false;
-      connectToWiFiAndInitOTA(wifiOnly,3);
+      M5.Lcd.fillScreen(TFT_BLACK);
+      M5.Lcd.setCursor(0,0);
+      M5.Lcd.println("Start\n  OTA\n\n");
+      delay(1000);
+      const int maxWifiScanAttempts = 3;
+      connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
 
       changeMade = true;
       const bool refreshCurrentScreen=true;
       cycleDisplays(refreshCurrentScreen);
       
-      dumpHeapUsage("checkReedSwitches(): switch to OTA");
     }
   }
   // press second button for 1 second...
@@ -696,7 +710,8 @@ void loop()
 {
   shutdownIfUSBPowerOff();
 
-  if (msgsReceivedQueue)
+  // do not process queued messages if ota is active, mapscreen is deleted and espnow will be shutdown anyway.
+  if (msgsReceivedQueue && !otaActive)
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
@@ -828,10 +843,22 @@ void vfd_5_current_target()
     }
   }
 
-  M5.Lcd.setCursor(0, mode_label_y_offset+10);
-  M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-  M5.Lcd.println("Towards");
-  
+  if (otaActive)
+  {
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(0, mode_label_y_offset+10);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    M5.Lcd.printf("%s",WiFi.localIP().toString());
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.println("");
+    M5.Lcd.setTextSize(3);
+  }
+  else
+  {
+    M5.Lcd.setCursor(0, mode_label_y_offset+10);
+    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+    M5.Lcd.println("Towards");
+  }  
   M5.Lcd.setCursor(28, mode_label_y_offset+38);
   M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
   getTime(currentTime);
@@ -888,11 +915,28 @@ void vfd_3_line_clock()
   {
     draw_digits(h1, h2, i1, i2, s1, s2);
 
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-
+    M5.Lcd.setTextSize(2);
+     
     M5.Lcd.setCursor(35, mode_label_y_offset+28);
-    M5.Lcd.print("Time");
+    if (otaActive)
+    {
+      M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+      M5.Lcd.printf("OTA On");
+    }
+    else if (isPairedWithMako && ESPNowActive)
+    {
+      M5.Lcd.setCursor(25, mode_label_y_offset+28);
+      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+      M5.Lcd.printf("ESPNow+");
+    }
+    else if (!isPairedWithMako)
+    {
+      M5.Lcd.setCursor(25, mode_label_y_offset+28);
+      M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+      M5.Lcd.printf("Paired-");
+    }
+    
+    // M5.Lcd.print("Time");
   }
 }
 
@@ -1038,7 +1082,7 @@ void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len
     USB_SERIAL.println((char*)data);
   }
 
-  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue
+  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
 }
 
 bool TeardownESPNow()
@@ -1119,6 +1163,15 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
   bool forcedCancellation = false;
 
+  if (wifiOnly == false && !otaActive)
+  {
+      dumpHeapUsage("setupOTAWebServer(): before delete MapScreen");
+
+      mapScreen.reset();
+
+      dumpHeapUsage("setupOTAWebServer(): after delete MapScreen");
+  }
+
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextSize(2);
@@ -1149,6 +1202,8 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   {
     if (wifiOnly == false && !otaActive)
     {
+      dumpHeapUsage("setupOTAWebServer(): after WiFi connect");
+
       if (writeLogToSerial)
         USB_SERIAL.println("setupOTAWebServer: WiFi connected ok, starting up OTA");
 
@@ -1164,11 +1219,6 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
       AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
 
-      dumpHeapUsage("setupOTAWebServer(): before delete MapScreen");
-
-      delete mapScreen.release();
-
-      dumpHeapUsage("setupOTAWebServer(): before asyncWebServer.begin");
 
       if (writeLogToSerial)
         USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.begin");
@@ -1219,6 +1269,8 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   }
 
   M5.Lcd.fillScreen(TFT_BLACK);
+
+  dumpHeapUsage("setupOTAWebServer(): end of function");
 
   return connected;
 }
