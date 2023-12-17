@@ -290,9 +290,10 @@ void MapScreen::setTargetWaypointByLabel(const char* label)
   _prevWaypoint = _targetWaypoint;
   _targetWaypoint = nullptr;
   // find targetWayPoint in the navigation_waypoints array by first 3 chars
+  const int matchCharacters = 4;
   for (int i=0; i < waypointCount; i++)
   {
-    if (strncmp(waypoints[i]._label, label, 3) == 0)
+    if (strncmp(waypoints[i]._label, label, matchCharacters) == 0)
     {
       _targetWaypoint=waypoints+i;
       break;

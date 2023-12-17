@@ -81,9 +81,7 @@ const navigationWaypoint waypoints[] =
   [76] = { ._label = "Z02 Mid Jetty", ._lat = 51.459547, ._long = -0.547461},
   [77] = { ._label = "Z03 Old Jetty", ._lat = 51.459166, ._long = -0.546999333333333},
 
-
-
-  [78] = { ._label = "Canoe Est. New", ._lat = 51.4620649, ._long = -0.5489528},
+  [78] = { ._label = "01N Canoe", ._lat = 51.4620416774194, ._long = 0.548974709677419},
   [79] = { ._label = "Canoe NW", ._lat = 51.4621272, ._long = -0.5490348},
   [80] = { ._label = "Canoe N", ._lat = 51.4621644, ._long = -0.5489503},
   [81] = { ._label = "Canoe NE", ._lat = 51.4621235, ._long = -0.5488664},
@@ -102,7 +100,7 @@ const navigationWaypoint waypoints[] =
   [94] = { ._label = "Canoe S2", ._lat = 51.4619701, ._long = -0.5489477},
   [95] = { ._label = "Cafe Jetty", ._lat = 51.460015, ._long = -0.548316},
 
-  [96] = { ._label = "Sub Est. New", ._lat = 51.4609545, ._long = -0.5491566},
+  [96] = { ._label = "02N Sub", ._lat = 51.4609042894737, ._long = 0.549211315789474},
   [97] = { ._label = "Sub W", ._lat = 51.4609559, ._long = -0.5492975},
   [98] = { ._label = "Sub NW", ._lat =  51.461031, ._long = -0.5492317},
   [99] = { ._label = "Sub N", ._lat = 51.4610407, ._long = -0.5491586},

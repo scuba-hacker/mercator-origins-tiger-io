@@ -1237,6 +1237,12 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
           WiFi.status() == WL_CONNECTED && wifiOnly == false && otaActive == false ) )
   {
     const char* network = scanForKnownNetwork();
+
+    if (!network)
+    {
+      delay(1000);
+      continue;
+    }
   
     int connectToFoundNetworkAttempts = 3;
     const int repeatDelay = 1000;
