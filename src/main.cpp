@@ -6,6 +6,9 @@
 #include <WiFi.h>
 #include <freertos/queue.h>
 
+#define MERCATOR_ELEGANTOTA_TIGER_BANNER
+#define MERCATOR_OTA_DEVICE_LABEL "TIGER-IO"
+
 #include <Update.h>             // OTA updates
 #include <AsyncTCP.h>           // OTA updates
 #include <ESPAsyncWebServer.h>  // OTA updates
@@ -1231,8 +1234,8 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
       if (writeLogToSerial)
         USB_SERIAL.println("setupOTAWebServer: calling AsyncElegantOTA.begin");
 
+      AsyncElegantOTA.setID(MERCATOR_OTA_DEVICE_LABEL);
       AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
-
 
       if (writeLogToSerial)
         USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.begin");
