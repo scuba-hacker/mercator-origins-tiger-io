@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include <M5StickCPlus.h>
+#include <MapScreen_M5.h>
 
 #include <esp_now.h>
 #include <WiFi.h>
@@ -17,12 +18,11 @@
 #include <memory.h>
 #include <time.h>
 
-#include "MapScreen.h"
-
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
 bool writeLogToSerial=false;
+bool testPreCannedLatLong=true;
 bool goProButtonsPrimaryControl = true;
 
 const bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
@@ -88,7 +88,7 @@ uint32_t lastSecondButtonPressLasted = 0;
 bool primaryButtonIndicatorNeedsClearing = false;
 bool secondButtonIndicatorNeedsClearing = false;
 
-std::unique_ptr<MapScreen> mapScreen;
+std::unique_ptr<MapScreen_M5> mapScreen;
 double latitude=51.460015;
 double longitude=-0.548316;
 double heading=0.0;
@@ -317,7 +317,7 @@ void setup()
 
   pinMode(UNUSED_GPIO_36_PIN,INPUT);
 
-  mapScreen.reset(new MapScreen(&M5.Lcd,&M5));
+  mapScreen = std::make_unique<MapScreen_M5>(M5.Lcd,M5);
 
   msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
@@ -534,7 +534,6 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
       }
       else if (mode_ == 6)     // show map, next is clock
       {
-        mapScreen->clearMapPreserveZoom();
         resetClock();
       }
       else
@@ -764,6 +763,10 @@ void loop()
                     
           char targetCode[7];
 
+          double old_latitude = latitude;
+          double old_longitude = longitude;
+          double old_heading = heading;
+
           strncpy(targetCode,rxQueueItemBuffer + targetCodeOffset,sizeof(targetCode));
           memcpy(&latitude,  rxQueueItemBuffer + latitudeOffset,  sizeof(double));
           memcpy(&longitude, rxQueueItemBuffer + longitudeOffset, sizeof(double));
@@ -786,6 +789,13 @@ void loop()
           }
 
           mapScreen->setTargetWaypointByLabel(targetCode);
+
+          if (testPreCannedLatLong)
+          {
+            latitude = old_latitude;
+            longitude = old_longitude+0.00001;
+            heading = static_cast<int>((old_heading + 5)) % 360;
+          }
 
           if (mode_ == 6) // map on screen
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
