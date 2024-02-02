@@ -22,7 +22,7 @@
 #include "mercator_secrets.c"
 
 bool writeLogToSerial=false;
-bool testPreCannedLatLong=true;
+bool testPreCannedLatLong=false;
 bool goProButtonsPrimaryControl = true;
 
 const bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
