@@ -14,6 +14,8 @@
 #include <AsyncTCP.h>           // OTA updates
 #include <ESPAsyncWebServer.h>  // OTA updates
 #include <AsyncElegantOTA.h>    // OTA updates
+AsyncElegantOtaClass AsyncElegantOTA;
+
 
 #include <memory.h>
 #include <time.h>
