@@ -3,19 +3,29 @@
 #include <M5StickCPlus.h>
 #include <MapScreen_M5.h>
 
+#include <WebSerial.h>
+
+#define USE_WEBSERIAL
+
+#ifdef USE_WEBSERIAL
+  #define USB_SERIAL WebSerial
+#else
+  #define USB_SERIAL Serial
+#endif
+
 #include <esp_now.h>
 #include <WiFi.h>
 #include <freertos/queue.h>
 
 #define MERCATOR_ELEGANTOTA_TIGER_BANNER
 #define MERCATOR_OTA_DEVICE_LABEL "TIGER-IO"
+#define RED_LED_GPIO 10
 
 #include <Update.h>             // OTA updates
 #include <AsyncTCP.h>           // OTA updates
 #include <ESPAsyncWebServer.h>  // OTA updates
 #include <AsyncElegantOTA.h>    // OTA updates
 AsyncElegantOtaClass AsyncElegantOTA;
-
 
 #include <memory.h>
 #include <time.h>
@@ -24,10 +34,11 @@ AsyncElegantOtaClass AsyncElegantOTA;
 #include "mercator_secrets.c"
 
 bool writeLogToSerial=false;
-bool testPreCannedLatLong=false;
+bool testPreCannedLatLong=false;       // test that animates the diver sprite through slow movements across the lake.
 bool goProButtonsPrimaryControl = true;
 
-const bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
+bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
+
 const bool enableESPNow = !enableOTAServerAtStartup; // cannot have OTA server on regular wifi and espnow concurrently running
 
 const String ssid_not_connected = "-";
@@ -71,6 +82,10 @@ Button ReedSwitchGoProSide = Button(BUTTON_REED_SIDE_PIN, true, MERCATOR_DEBOUNC
 Button LeakDetectorSwitch = Button(PENETRATOR_LEAK_DETECTOR_PIN, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount = 0, topCount = 0;
 
+bool topReedActiveAtStartup = false;
+bool sideReedActiveAtStartup = false;
+
+
 const uint16_t mode_label_y_offset = 170;
 
 AsyncWebServer asyncWebServer(80);      // OTA updates
@@ -106,15 +121,9 @@ const char* leakAlarmMsg = "\nWATER\n\nLEAK\n\nALARM";
 
 int mode_ = 3; // clock
 
-#define USB_SERIAL Serial
-
 const int defaultBrightness = 100;
 
 bool showPowerStats=false;
-
-const float minimumUSBVoltage=2.0;
-long USBVoltageDropTime=0;
-long milliSecondsToWaitForShutDown=1000;
 
 char rxQueueItemBuffer[256];
 const uint8_t queueLength=4;
@@ -123,7 +132,6 @@ char currentTarget[128];
 char previousTarget[128];
 bool refreshTargetShown = false;
 
-void shutdownIfUSBPowerOff();
 void initialiseRTCfromNTP();
 bool cycleDisplays(const bool refreshCurrentDisplay = false);
 bool checkReedSwitches();
@@ -157,29 +165,6 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts);
 bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
-
-void shutdownIfUSBPowerOff()
-{
-  if (M5.Axp.GetVBusVoltage() < minimumUSBVoltage)
-  {
-    if (USBVoltageDropTime == 0)
-      USBVoltageDropTime=millis();
-    else
-    {
-      if (millis() > USBVoltageDropTime + milliSecondsToWaitForShutDown)
-      {
-       // initiate shutdown after 3 seconds.
-       delay(1000);
-       fadeToBlackAndShutdown();
-      }
-    }
-  }
-  else
-  {
-    if (USBVoltageDropTime != 0)
-      USBVoltageDropTime = 0;
-  }
-}
 
 void  initialiseRTCfromNTP()
 {
@@ -300,26 +285,97 @@ void dumpHeapUsage(const char* msg)
     USB_SERIAL.printf("\n%s : free heap bytes: %i  largest free heap block: %i min free ever: %i\n",  msg, info.total_free_bytes, info.largest_free_block, info.minimum_free_bytes);
   }
 }
+void showOTARecoveryScreen()
+{
+  M5.Lcd.fillScreen(TFT_GREEN);
+  M5.Lcd.setCursor(5,5);
+  M5.Lcd.setTextColor(TFT_WHITE,TFT_GREEN);
+  M5.Lcd.setTextSize(3);
+
+  if (otaActive)
+  {
+    M5.Lcd.printf("OTA\nRecover\nActive\n\n%s",WiFi.localIP().toString());
+  }
+  else
+  {
+    M5.Lcd.print("OTA\nRecover\nNo WiFi\n\n");
+  }
+
+  while (true)
+    delay(1000);
+}
+
+
+bool haltAllProcessingDuringOTAUpload = false;
+
+void disableFeaturesForOTA(bool screenToRed=true)
+{
+  WebSerial.closeAll();   // close all websocket connetions for WebSerial
+}
+void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
+{
+  disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
+}
 
 void setup()
 {
   M5.begin();
   
   dumpHeapUsage("Setup(): start");
+  currentTarget[0]='\0';
+  previousTarget[0]='\0';
+
+
+#ifndef USE_WEBSERIAL
+  if (writeLogToSerial)
+    USB_SERIAL.begin(115200);
+#endif
 
   ssid_connected = ssid_not_connected;
 
-  // Serial.println("Managed to allocate 2 x 8-bit 320x240 = 76800 bytes");
-  
-  if (writeLogToSerial)
-    USB_SERIAL.begin(115200);
+  uint32_t start = millis();
+  while(millis() < start + 2000)
+  {
+    if (digitalRead(BUTTON_REED_TOP_PIN) == false)
+    {
+      enableOTAServerAtStartup = true;
+      topReedActiveAtStartup = true;
+      break;
+    }
 
+    if (digitalRead(BUTTON_REED_SIDE_PIN) == false)
+    {
+      sideReedActiveAtStartup = true;
+      // no function currently - could be used for show test track
+      break;
+    }
+  }
+
+  if (enableOTAServerAtStartup)
+  {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    M5.Lcd.setCursor(5,5);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.println("Start\nOTA\n\n");
+    delay(1000);
+    const bool wifiOnly = false;
+    const int maxWifiScanAttempts = 3;
+    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
+  }
+
+  if (topReedActiveAtStartup)
+    showOTARecoveryScreen();
+  
   strncpy(previousTarget,"None",sizeof(previousTarget));
   strncpy(currentTarget,"  No\nTarget\n  Set\n From\n Mako",sizeof(currentTarget));
 
   pinMode(UNUSED_GPIO_36_PIN,INPUT);
 
-  mapScreen = std::make_unique<MapScreen_M5>(M5.Lcd,M5);
+  mapScreen = std::make_unique<MapScreen_M5>(M5.Lcd);
+  mapScreen->provideLoggingHook(USB_SERIAL);
+
+  mapScreen->setDrawAllFeatures(true);
+  mapScreen->setUseDiverHeading(true);
 
   msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
@@ -351,17 +407,6 @@ void setup()
 
   M5.Lcd.setTextSize(2);
   M5.Axp.ScreenBreath(defaultBrightness);
-
-  if (enableOTAServerAtStartup)
-  {
-    M5.Lcd.fillScreen(TFT_BLACK);
-    M5.Lcd.setCursor(0,0);
-    M5.Lcd.println("Start OTA\n\n");
-    delay(1000);
-    const bool wifiOnly = false;
-    const int maxWifiScanAttempts = 3;
-    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
-  }
 
   initialiseRTCfromNTP();
 
@@ -485,17 +530,6 @@ void resetClock()
   mode_ = 3; // change back to 3
 }
 
-void fadeToBlackAndShutdown()
-{
-  for (int i = 90; i > 0; i=i-15)
-  {
-    M5.Axp.ScreenBreath(i);             // fade to black
-    delay(100);
-  }
-
-  M5.Axp.PowerOff();
-}
-
 bool cycleDisplays(const bool refreshCurrentDisplay)
 {
     bool changeMade = true;
@@ -503,17 +537,11 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
     if (refreshCurrentDisplay)
     {
       if (mode_ == 3)
-      {
         resetClock();
-      }
       else if (mode_ == 5)
-      {
         resetCurrentTarget();
-      }
       else if (mode_ == 6)
-      {
         resetMap();
-      }
       else
       {
         if (writeLogToSerial)
@@ -524,9 +552,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
     else
     {
       if (mode_ == 3) // clock mode, next is show current target
-      {
         resetCurrentTarget();
-      }
       else if (mode_ == 5)     // show current target, next is map
       {
         if (mapScreen.get())    // OTA enabling has to delete the map screen
@@ -535,9 +561,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
           resetClock();   // OTA enabled, go back to clock
       }
       else if (mode_ == 6)     // show map, next is clock
-      {
         resetClock();
-      }
       else
       {
         if (writeLogToSerial)
@@ -723,17 +747,12 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
 
 void loop()
 {
-  shutdownIfUSBPowerOff();
-
-  // do not process queued messages if ota is active, mapscreen is deleted and espnow will be shutdown anyway.
   if (msgsReceivedQueue && !otaActive)
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
       if (!isPairedWithMako)    // only pair with Mako once first message received from Mako.
-      {
         pairWithMako();
-      }
 
       switch(rxQueueItemBuffer[0])
       {
@@ -774,7 +793,8 @@ void loop()
           memcpy(&longitude, rxQueueItemBuffer + longitudeOffset, sizeof(double));
           memcpy(&heading,   rxQueueItemBuffer + headingOffset, sizeof(double));
 
-          if (strcmp(rxQueueItemBuffer+currentTargetOffset,currentTarget) != 0)
+          if (*currentTarget == '\0' ||
+              strcmp(rxQueueItemBuffer+currentTargetOffset,currentTarget) != 0)
           {
             strncpy(previousTarget,currentTarget,sizeof(previousTarget));
             strncpy(currentTarget,rxQueueItemBuffer+currentTargetOffset,sizeof(currentTarget));
@@ -787,7 +807,6 @@ void loop()
             USB_SERIAL.printf("latitude: %f\n",latitude);
             USB_SERIAL.printf("longitude: %f\n",longitude);
             USB_SERIAL.printf("heading: %f\n",heading);
-            USB_SERIAL.printf("currentTarget: %s\n",currentTarget);
           }
 
           mapScreen->setTargetWaypointByLabel(targetCode);
@@ -1177,6 +1196,28 @@ const char* scanForKnownNetwork() // return first known network found
   return network;
 }
 
+void webSerialReceiveMessage(uint8_t *data, size_t len){
+  WebSerial.println("Received Data...");
+  String d = "";
+  for(int i=0; i < len; i++){
+    d += char(data[i]);
+  }
+
+  WebSerial.println(d);
+
+  if (d == "ON"){
+    digitalWrite(RED_LED_GPIO, HIGH);
+  }
+  else if (d=="OFF"){
+    digitalWrite(RED_LED_GPIO, LOW);
+  }
+  else if (d=="serial-off")
+  {
+    writeLogToSerial = false;
+    WebSerial.closeAll();
+  }
+}
+
 bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly)
 {
   if (wifiOnly && WiFi.status() == WL_CONNECTED)
@@ -1192,15 +1233,6 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
   bool forcedCancellation = false;
 
-  if (wifiOnly == false && !otaActive)
-  {
-      dumpHeapUsage("setupOTAWebServer(): before delete MapScreen");
-
-      mapScreen.reset();
-
-      dumpHeapUsage("setupOTAWebServer(): after delete MapScreen");
-  }
-
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextSize(2);
@@ -1213,15 +1245,6 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   int count = timeout / 500;
   while (WiFi.status() != WL_CONNECTED && --count > 0)
   {
-    // check for cancellation button - top button.
-    updateButtonsAndBuzzer();
-
-    if (p_primaryButton->isPressed()) // cancel connection attempts
-    {
-      forcedCancellation = true;
-      break;
-    }
-
     M5.Lcd.print(".");
     delay(500);
   }
@@ -1247,7 +1270,17 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
         USB_SERIAL.println("setupOTAWebServer: calling AsyncElegantOTA.begin");
 
       AsyncElegantOTA.setID(MERCATOR_OTA_DEVICE_LABEL);
+      AsyncElegantOTA.setUploadBeginCallback(uploadOTABeginCallback);
       AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
+
+      static bool webSerialInitialised = false;
+
+      if (!webSerialInitialised)
+      {
+        WebSerial.begin(&asyncWebServer);
+        WebSerial.msgCallback(webSerialReceiveMessage);
+        webSerialInitialised = true;
+      }
 
       if (writeLogToSerial)
         USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.begin");
@@ -1274,27 +1307,14 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
       delay(2000);
 
       connected = true;
-  
-      updateButtonsAndBuzzer();
-  
-      if (p_secondButton->isPressed())
-      {
-        M5.Lcd.print("\n\n20\nsecond pause");
-        delay(20000);
-      }
     }
   }
   else
   {
-    if (forcedCancellation)
-      M5.Lcd.print("\nCancelled\nConnect\nAttempts");
-    else
-    {
-      if (writeLogToSerial)
-        USB_SERIAL.printf("setupOTAWebServer: WiFi failed to connect %s\n",_ssid);
+    if (writeLogToSerial)
+      USB_SERIAL.printf("setupOTAWebServer: WiFi failed to connect %s\n",_ssid);
 
-      M5.Lcd.print("No Connect");
-    }
+    M5.Lcd.print("No Connect");
   }
 
   M5.Lcd.fillScreen(TFT_BLACK);
