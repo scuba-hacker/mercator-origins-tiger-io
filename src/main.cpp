@@ -112,7 +112,7 @@ double heading=0.0;
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;        // timezone offset
-int   daylightOffset_sec = 0;   // DST offset
+int   daylightOffset_sec = 3600;   // DST offset
 
 RTC_TimeTypeDef RTC_TimeStruct;
 RTC_DateTypeDef RTC_DateStruct;
@@ -137,6 +137,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay = false);
 bool checkReedSwitches();
 void publishToMakoTestMessage(const char* testMessage);
 void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
+void publishToMakoLeakDetected();
 void vfd_3_line_clock();
 void vfd_5_current_target();
 void vfd_6_map();
@@ -152,6 +153,7 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 void toggleOTAActiveAndWifiIfUSBPowerOff();
 void updateButtonsAndBuzzer();
 void readAndTestGoProReedSwitches();
+bool leakAlarmActive = false;
 void checkForLeak(const char* msg, const uint8_t pin);
 void InitESPNow();
 void configAndStartUpESPNow();
@@ -457,6 +459,8 @@ void checkForLeak(const char* msg, const uint8_t pin)
 
   if (leakStatus)
   {
+    leakAlarmActive = true;
+
     M5.Lcd.fillScreen(TFT_RED);
     M5.Lcd.setTextSize(4);
     M5.Lcd.setCursor(5, 10);
@@ -480,6 +484,8 @@ void checkForLeak(const char* msg, const uint8_t pin)
     M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
     M5.Lcd.fillScreen(TFT_BLACK);
     M5.Beep.mute();
+
+    publishToMakoLeakDetected();
   }
 }
 
@@ -742,6 +748,33 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
   {
     if (writeLogToSerial)
       USB_SERIAL.println("ESPNow inactive - not sending ESP R msg to Mako...");
+  }
+}
+
+uint32_t  nextLeakMessagePublishTime = 0;
+const uint32_t leakMessageDutyCycle = 3000;
+
+void publishToMakoLeakDetected()
+{
+  if (millis() > nextLeakMessagePublishTime)
+  {
+    nextLeakMessagePublishTime = millis() + leakMessageDutyCycle;
+
+    if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+    {
+      snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"L");
+      if (writeLogToSerial)
+      {
+        USB_SERIAL.println("Sending ESP L msg to Mako...");
+        USB_SERIAL.println(mako_espnow_buffer);
+      }
+      ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    }
+    else
+    {
+      if (writeLogToSerial)
+        USB_SERIAL.println("ESPNow inactive - not sending ESP L msg to Mako...");
+    }
   }
 }
 
