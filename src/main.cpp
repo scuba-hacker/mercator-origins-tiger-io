@@ -5,7 +5,7 @@
 
 #include <WebSerial.h>
 
-#define USE_WEBSERIAL
+//#define USE_WEBSERIAL
 
 #ifdef USE_WEBSERIAL
   #define USB_SERIAL WebSerial
@@ -562,13 +562,16 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
       else if (mode_ == 5)
         resetCurrentTarget();
       else if (mode_ == 6)
-        resetMap();
+        if (mapScreen.get())    // OTA enabling has to delete the map screen
+          resetMap();
+        else
+          resetClock();   // OTA enabled, go back to clock
       else
       {
         if (writeLogToSerial)
           USB_SERIAL.println("cycleDisplays Error: invalid mode_");
         changeMade = false;
-      }      
+      }
     }
     else
     {
@@ -660,12 +663,18 @@ bool checkReedSwitches()
     reedSwitchTop = true;
     changeMade = true;
 
+    if (writeLogToSerial)
+      USB_SERIAL.println("Cycle To Next Display");
+
     cycleDisplays();
   }
 
   // press second button for 5 seconds to attempt WiFi connect and enable OTA
   if (p_secondButton->wasReleasefor(10000))
   { 
+    if (writeLogToSerial)
+      USB_SERIAL.println("Reboot");
+
      esp_restart();
   }
   else if (p_secondButton->wasReleasefor(5000))
@@ -692,8 +701,9 @@ bool checkReedSwitches()
       changeMade = true;
       const bool refreshCurrentScreen=true;
       cycleDisplays(refreshCurrentScreen);
-      
     }
+    if (writeLogToSerial)
+      USB_SERIAL.println("Enable OTA Mode");
   }
   // press second button for 1 second...
   else if (p_secondButton->wasReleasefor(1000))
@@ -707,6 +717,8 @@ bool checkReedSwitches()
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
       changeMade = true;
     }
+    if (writeLogToSerial)
+      USB_SERIAL.println("Toggle show all map features");
   }
   // press second button for 0.1 second...
   else if (p_secondButton->wasReleasefor(100))
@@ -718,6 +730,9 @@ bool checkReedSwitches()
     {
       mapScreen->cycleZoom(); changeMade = true;
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
+
+      if (writeLogToSerial)
+        USB_SERIAL.println("Cycle zoom level on map");
     }
   }
   
@@ -1261,10 +1276,10 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   WebSerial.println(d);
 
   if (d == "ON"){
-    digitalWrite(RED_LED_GPIO, HIGH);
+    digitalWrite(RED_LED_GPIO, LOW);
   }
   else if (d=="OFF"){
-    digitalWrite(RED_LED_GPIO, LOW);
+    digitalWrite(RED_LED_GPIO, HIGH);
   }
   else if (d=="serial-off")
   {
