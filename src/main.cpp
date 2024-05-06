@@ -168,6 +168,14 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
 
+uint8_t redLEDStatus = HIGH;
+
+void toggleRedLED()
+{
+  redLEDStatus = (redLEDStatus == HIGH ? LOW : HIGH );
+  digitalWrite(RED_LED_GPIO, redLEDStatus);
+}
+
 void  initialiseRTCfromNTP()
 {
   const uint8_t max_NTP_connect_attempts=10;
@@ -312,8 +320,13 @@ bool haltAllProcessingDuringOTAUpload = false;
 
 void disableFeaturesForOTA(bool screenToRed=true)
 {
+  haltAllProcessingDuringOTAUpload = true;
+
+  mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
+
   WebSerial.closeAll();   // close all websocket connetions for WebSerial
 }
+
 void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
 {
   disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
@@ -327,6 +340,8 @@ void setup()
   currentTarget[0]='\0';
   previousTarget[0]='\0';
 
+  pinMode(RED_LED_GPIO, OUTPUT); // Red LED - the interior LED to M5 Stick
+  digitalWrite(RED_LED_GPIO, redLEDStatus);
 
 #ifndef USE_WEBSERIAL
   if (writeLogToSerial)
@@ -780,6 +795,13 @@ void publishToMakoLeakDetected()
 
 void loop()
 {
+  if (haltAllProcessingDuringOTAUpload)
+  {
+    delay(500);
+    toggleRedLED();
+    return;
+  }
+
   if (msgsReceivedQueue && !otaActive)
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
@@ -1271,6 +1293,9 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   M5.Lcd.setTextSize(2);
   bool connected = false;
   WiFi.mode(WIFI_STA);
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+  WiFi.setHostname("tiger");
+
   WiFi.begin(_ssid, _password);
 
   // Wait for connection for max of timeout/1000 seconds
