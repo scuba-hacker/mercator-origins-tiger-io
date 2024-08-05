@@ -826,12 +826,13 @@ void loop()
 
       switch(rxQueueItemBuffer[0])
       {
+        /* DISABLED
         case 'l':   // Bright light detected by Mako - switch to next screen
         {
           cycleDisplays();
           break;
         }
-
+*/
         case 'c':   // current target
         {
           if (strcmp(rxQueueItemBuffer+1,currentTarget) != 0)
