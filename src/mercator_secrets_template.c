@@ -14,24 +14,4 @@ static const char* ssid_3     = "";
 static const char* password_3 = "";
 static const char* label_3 = "";
 static const int   timeout_3 = 10000;
-
-static const char* qubitro_host = "";
-static const int   qubitro_port = 1883;	// 1883 (dev) or 8883 (prod)
-static const char* qubitro_username = "";
-static const char* qubitro_password = "";
-static const char* qubitro_client_id = "";  
-static const char* qubitro_device_id = "";
-static const char* qubitro_device_token = "";
-
-static const char* smtpServer = "";
-static const int   smtpPort = 465;		// depends upon smtp protocol used by your isp
-static const char* smtpSenderEmail = "";
-static const char* smtpSenderPassword = "";
-static const char* smtpRecepientEmail = "";
-
-static const char* twitterConsumerKey = "";
-static const char* twitterConsumerSecret = "";
-static const char* twitterAccessToken = "";
-static const char* twitterAccessTokenSecret = "";
-static const char* twitterBearerToken = "";
 */
