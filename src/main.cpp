@@ -1056,7 +1056,7 @@ void vfd_3_line_clock()
     }
     
     M5.Lcd.setCursor(12, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_PURPLE, TFT_BLACK);
     M5.Lcd.printf("AXP %.1fC",M5.Axp.GetTempInAXP192());
     
     // M5.Lcd.print("Time");
