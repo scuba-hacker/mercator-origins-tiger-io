@@ -112,7 +112,7 @@ double heading=0.0;
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;        // timezone offset
-int   daylightOffset_sec = 3600;   // DST offset
+int   daylightOffset_sec = 0;   // DST offset - 3600 in the summer
 
 RTC_TimeTypeDef RTC_TimeStruct;
 RTC_DateTypeDef RTC_DateStruct;
