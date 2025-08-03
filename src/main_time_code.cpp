@@ -7,11 +7,8 @@ void  initialiseRTCfromNTP()
 
   const bool wifiOnly = true;
 
-  M5.Lcd.println("Get Time...\n\n");
-  delay(1000);
-
   const int maxWifiScanAttempts = 2;  
-  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts))
+  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP\nTime...\n"))
   {
     M5.Lcd.println("Wifi OK");
     
@@ -42,7 +39,7 @@ bool detectTimezoneFromIP(long& timezoneOffset)
     return result;
   }
 
-  M5.Lcd.println("Get Timezone...");
+  M5.Lcd.println("Get\nTimezone...\n");
   
   // Use ip-api.com for IP-based geolocation (free, no API key needed)
   WiFiClient client;
@@ -75,7 +72,6 @@ bool detectTimezoneFromIP(long& timezoneOffset)
     
     M5.Lcd.printf("TZ: %s\n", timezone.c_str());
     M5.Lcd.printf("UTC%+d hours\n", offsetSeconds/3600);
-    delay(1000);
     result = true;
   } else {
     USB_SERIAL_PRINTF("IP Timezone API failed: %d\n", httpCode);

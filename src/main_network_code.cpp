@@ -17,7 +17,7 @@ void showOTARecoveryScreen()
 
   if (otaActive)
   {
-    M5.Lcd.println("  Mako OTA\n    Ready\n");
+    M5.Lcd.println(" Lemon OTA\n    Ready\n");
     M5.Lcd.setTextSize(1);
     M5.Lcd.println("");
     M5.Lcd.setTextSize(2);
@@ -53,7 +53,8 @@ void disableFeaturesForOTA(bool screenToRed=true)
 
   writeLogToSerial = false;
 
-  mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
+  if (mapScreen.get())
+    mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
   WebSerial.closeAll();   // close all websocket connetions for WebSerial
 }
@@ -61,22 +62,20 @@ void disableFeaturesForOTA(bool screenToRed=true)
 bool systemStartupAndCheckForOTADemand()
 {
   M5.begin();
-  M5.Axp.ScreenBreath(defaultBrightness);
-
-  dumpHeapUsage("Setup(): start");
-  currentTarget[0]='\0';
-  previousTarget[0]='\0';
 
   USB_SERIAL.begin(115200);
 
   initRedLed();
+
+  currentTarget[0]='\0';
+  previousTarget[0]='\0';
   
   ssid_connected = ssid_not_connected;
 
-  uint32_t start = millis();
-  while(millis() < start + 2000)
+  uint32_t endButtonCheckAt = millis() + 2000;
+  while(millis() < endButtonCheckAt)
   {
-    if (isTopReedClosed())
+    if (isTopReedClosed() || isButtonAPressed())
     {
       enableOTAServerAtStartup = true;
       topReedActiveAtStartup = true;
@@ -92,6 +91,12 @@ bool systemStartupAndCheckForOTADemand()
       break;
     }
   }
+  
+  if (haltAllProcessingDuringOTAUpload)
+    USB_SERIAL_PRINTLN("Detected OTA Demanded at startup");
+  else
+    USB_SERIAL_PRINTLN("Did not detect OTA Demanded at startup");
+
 
   return haltAllProcessingDuringOTAUpload;
 }
@@ -122,7 +127,7 @@ bool cutShortLoopOnOTADemand()
       M5.Lcd.fillScreen(TFT_BLACK);
       const bool wifiOnly = false;
       const int maxWifiScanAttempts = 3;
-      otaActive = connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
+      otaActive = connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts, "Enabling\nOTA\n");
     }
 
     if (!recoveryScreenShown) 
@@ -138,12 +143,13 @@ bool cutShortLoopOnOTADemand()
       toggleRedLED();
     }
 
-    // After 5 seconds of recovery screen, allow restart if any button is pressed 
+    // After 5 seconds of recovery screen, allow restart if any reed 
+    // is activated or button is pressed. Bypass normal button processingcode.
     if (recoveryScreenShown && (millis() - recoveryScreenStartTime > 5000)) 
     {            
       // check if either button is pressed once 5 seconds has passed since ota screen was shown
       
-      if (isTopReedClosed() || isSideReedClosed()) {
+      if (isTopReedClosed() || isSideReedClosed() || isButtonAPressed() || isButtonBPressed()) {
         M5.Lcd.fillScreen(TFT_GREEN);
         M5.Lcd.setCursor(0,10);
         M5.Lcd.setTextSize(3);
@@ -369,7 +375,7 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   return connected;
 }
 
-bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
+bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const char* message)
 {
   if (wifiOnly && WiFi.status() == WL_CONNECTED)
     return true;
@@ -377,6 +383,8 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextSize(2);
+
+  M5.Lcd.println(message);
 
   while (repeatScanAttempts-- &&
          (WiFi.status() != WL_CONNECTED ||

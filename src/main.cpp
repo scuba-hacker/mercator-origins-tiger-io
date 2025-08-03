@@ -76,6 +76,9 @@ const uint8_t M5_POWER_SWITCH_PIN=255;
 const uint32_t MERCATOR_DEBOUNCE_MS=100;
 const uint8_t LEAK_DETECTOR_GPIO=26;
 
+const uint8_t M5_BUTTON_A_PIN = BUTTON_A_PIN;
+const uint8_t M5_BUTTON_B_PIN = BUTTON_B_PIN;
+
 Button ReedSwitchGoProTop = Button(REED_GOPRO_TOP_GPIO, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
 Button ReedSwitchGoProSide = Button(REED_GOPRO_SIDE_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 Button LeakDetectorSwitch = Button(LEAK_DETECTOR_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
@@ -87,6 +90,14 @@ bool isTopReedClosed() { // Direct GPIO Read Bypass button press code
 
 bool isSideReedClosed() { // Direct GPIO Read Bypass button press code
   return digitalRead(REED_GOPRO_SIDE_GPIO) == false;
+}
+
+bool isButtonAPressed() { // Direct GPIO Read Bypass button press code
+  return digitalRead(M5_BUTTON_A_PIN) == false;
+}
+
+bool isButtonBPressed() { // Direct GPIO Read Bypass button press code
+  return digitalRead(M5_BUTTON_B_PIN) == false;
 }
 
 bool isLeakDetected() { // Direct GPIO Read Bypass button press code
@@ -227,7 +238,7 @@ void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len
 bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const bool suppressPeerFoundMsg = true);
 bool pairWithMako();
 bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int maxAttempts);
-bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts);
+bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const char* message);
 bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
@@ -383,7 +394,13 @@ bool checkReedSwitches()
   // press second button for 5 seconds to attempt WiFi connect and enable OTA
   else if (p_secondButton->wasReleasefor(SECOND_BUTTON_CONNECT_OTA_PRESS))
   { 
-    if (mode_ != 6)   // map screen has to be deleted for OTA to be enabled, cannot do this if already in map mode
+    if (mode_ == 100) // map screen has to be deleted for OTA to be enabled, cannot do this if already in map mode
+    {
+//      cycleDisplays();
+      //if (mapScreen.get())
+      //  mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
+    }
+    else
     {
       activationTime = lastSecondButtonPressLasted;
       reedSwitchTop = false;
@@ -396,11 +413,8 @@ bool checkReedSwitches()
       // enable OTA
       const bool wifiOnly = false;
       M5.Lcd.fillScreen(TFT_BLACK);
-      M5.Lcd.setCursor(0,0);
-      M5.Lcd.println("Start\n  OTA\n\n");
-      delay(1000);
       const int maxWifiScanAttempts = 3;
-      connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
+      connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
 
       changeMade = true;
       const bool refreshCurrentScreen=true;

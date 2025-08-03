@@ -128,6 +128,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
 {
     bool changeMade = true;
 
+    dumpHeapUsage("cycleDisplays(): ");
     if (refreshCurrentDisplay)
     {
       if (mode_ == 3)
