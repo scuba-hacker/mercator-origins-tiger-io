@@ -101,7 +101,7 @@ void publishToMakoTestMessage(const char* testMessage)
   }
 }
 
-void publishToMakoForceGoProButtonsUsage()
+void publishToMakoForceGoProButtonsPrimaryControl()
 {
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
   {

@@ -10,6 +10,14 @@ bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick phys
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+Documentation needed:
+
+Reed Controls / M5 Button Controls when under test
+Serial Commands
+ESPNow Commands 
+*/
+
 #include <Arduino.h>
 
 #include <M5StickCPlus.h>
@@ -195,6 +203,7 @@ void shutdownIfUSBPowerOff();
 void publishToMakoTestMessage(const char* testMessage);
 void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
 void publishToMakoLeakDetected();
+void publishToMakoForceGoProButtonsPrimaryControl();
 void drawClockDisplay();
 void drawCurrentTargetDisplay();
 void drawDisplay();
@@ -363,6 +372,19 @@ void setPrimaryControls(const bool useReedSwitches)
   }
 }
 
+void forceReedSwitchesPrimaryControl()
+{
+  // get out of jail...
+  // If the code is uploaded to Tiger in the pod with reedSwitchesPrimaryControl set to true (ie from being tested on the bench outside the pod, or
+  // another M5 stick as a test device), then the reeds don't work and there is no way to force an OTA to get this corrected.
+  // This is a special case where closing either reed switch when in ButtonsPrimary mode switches to the reed switches as primary
+  // so that the code can be re-uploaded with the primaries set back to the reeds.
+  // Without this you have to open the GoPro case and physically upload code to Tiger using USB-C. Not nice as the pod needs dismantling to do this!
+  reedSwitchesPrimaryControl = true;
+  setPrimaryControls(reedSwitchesPrimaryControl);
+  display_mode = DISPLAY_7_POD_CONTROLS_ENABLED;
+}
+  
 bool checkReedSwitches()
 {  
   bool changeMade = false;
@@ -388,17 +410,9 @@ bool checkReedSwitches()
 
   if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
   {
-    // get out of jail...
-    // If the code is uploaded to Tiger in the pod with reedSwitchesPrimaryControl set to true (ie from being tested on the bench outside the pod, or
-    // another M5 stick as a test device), then the reeds don't work and there is no way to force an OTA to get this corrected.
-    // This is a special case where closing either reed switch when in ButtonsPrimary mode switches to the reed switches as primary
-    // so that the code can be re-uploaded with the primaries set back to the reeds.
-    // Without this you have to open the GoPro case and physically upload code to Tiger using USB-C. Not nice as the pod needs dismantling to do this!
-    reedSwitchesPrimaryControl = true;
-    setPrimaryControls(reedSwitchesPrimaryControl);
-    drawPodControlsEnabledDisplay();
- 
-    // could also send a message to Mako here to make sure that he is also in go pro button and not in M5 Button mode.
+    forceReedSwitchesPrimaryControl();                // get out of Jail, make reed switches primary control and not M5 buttons
+    publishToMakoForceGoProButtonsPrimaryControl();   // also tell Mako to use Go Pro Buttons and not M5 buttons - in case he is in Jail!
+
     changeMade = true;
     return changeMade;
   }

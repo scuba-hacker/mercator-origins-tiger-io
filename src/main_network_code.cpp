@@ -157,7 +157,7 @@ bool cutShortLoopOnOTADemand()
       otaActive = connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts, "Enabling\nOTA\n");
     }
 
-    if (!recoveryScreenShown) 
+    if (!recoveryScreenShown)
     {
       showOTARecoveryScreen();
       recoveryScreenStartTime = millis();
@@ -292,11 +292,21 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   }
   else if (d=="ota-off")
   {
-    Serial.println("OTA off requested via WebSerial command - will execute in main loop");
+    USB_SERIAL_PRINTLN("OTA off requested via WebSerial command - will execute in main loop");
     // Set flag to execute OTA shutdown in main loop, not in callback
     otaShutdownRequested = true;
     otaShutdownStartTime = millis();
   }
+  else if (d=="force-reeds-primary")
+  {
+    USB_SERIAL_PRINTLN("Force reeds to be primary control requested via WebSerial command - will execute in main loop");
+    forceReedSwitchesPrimaryControl();
+  }
+  else if (d=="ota-only-mode")
+  {
+    USB_SERIAL_PRINTLN("Halt all processing and display green OTA screen");
+    haltAllProcessingDuringOTAUpload = true;
+  }  
   else
   {
     USB_SERIAL_PRINTF("Unknown WebSerial command: %s\n", d.c_str());

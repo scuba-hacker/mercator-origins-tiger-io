@@ -132,6 +132,8 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
                 <option value="ZoomMap">Zoom Map</option>
                 <option value="ota-off">OTA Off</option>
                 <option value="reboot">Reboot</option>
+                <option value="force-reeds-primary">Force Reed Switches Primary Controls</option>
+                <option value="ota-only-mode">OTA Only Mode</option>
             </select>
             <button onclick="sendDropdownMessage()">Send</button>
         </div>

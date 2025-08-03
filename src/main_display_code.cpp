@@ -205,7 +205,7 @@ void drawPodControlsEnabledDisplay()
    delay(5000);
    M5.Lcd.fillScreen(TFT_BLACK);
 
-   display_mode == DISPLAY_3_CLOCK;
+   display_mode = DISPLAY_3_CLOCK;
    drawDisplay();
 }
 
