@@ -7,8 +7,6 @@
 ///////////////////////////////// WiFi/Network/OTA Functions
 ////////////////////////////////////////////////////////////////////////
 
-
-
 void showOTARecoveryScreen()
 {
   M5.Lcd.setRotation(1);
@@ -102,7 +100,7 @@ bool systemStartupAndCheckForOTADemand()
   uint32_t endButtonCheckAt = millis() + 2000;
   while(millis() < endButtonCheckAt)
   {
-    if (isTopReedClosed() || isButtonAPressed())
+    if (isTopReedClosed())
     {
       enableOTAServerAtStartup = true;
       topReedActiveAtStartup = true;
@@ -111,12 +109,7 @@ bool systemStartupAndCheckForOTADemand()
       disableFeaturesForOTA(); 
       break;
     }
-
-    if (isSideReedClosed())
-    {
-      // Cannot use this as side GPIO = 0 , a strapping pin
-      break;
-    }
+    // Side Reed uses GPIO 0 which is a strapping pin
   }
   
   if (haltAllProcessingDuringOTAUpload)

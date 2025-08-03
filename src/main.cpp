@@ -360,6 +360,11 @@ void setup()
 
 void setPrimaryControls(const bool useReedSwitches)
 {
+  ReedSwitchGoProTop.reset();
+  ReedSwitchGoProSide.reset();
+  M5.BtnA.reset();
+  M5.BtnB.reset();
+
   if (useReedSwitches)
   {
     p_primaryButton = &ReedSwitchGoProTop;
@@ -381,7 +386,7 @@ void forceReedSwitchesPrimaryControl()
   // so that the code can be re-uploaded with the primaries set back to the reeds.
   // Without this you have to open the GoPro case and physically upload code to Tiger using USB-C. Not nice as the pod needs dismantling to do this!
   reedSwitchesPrimaryControl = true;
-  setPrimaryControls(reedSwitchesPrimaryControl);
+  setPrimaryControls(reedSwitchesPrimaryControl); 
   display_mode = DISPLAY_7_POD_CONTROLS_ENABLED;
 }
   
@@ -410,9 +415,10 @@ bool checkReedSwitches()
 
   if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
   {
+    delay(500);                                       // small delay to let the reed open again
     forceReedSwitchesPrimaryControl();                // get out of Jail, make reed switches primary control and not M5 buttons
     publishToMakoForceGoProButtonsPrimaryControl();   // also tell Mako to use Go Pro Buttons and not M5 buttons - in case he is in Jail!
-
+    
     changeMade = true;
     return changeMade;
   }
