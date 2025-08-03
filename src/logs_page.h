@@ -27,6 +27,30 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
             margin-bottom: 20px; 
             text-align: center; 
         }
+        .command-controls {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .command-input {
+            flex: 1;
+            padding: 8px;
+            font-family: monospace;
+            border: 1px solid #444;
+            background: #2d2d2d;
+            color: #d4d4d4;
+            border-radius: 4px;
+        }
+        .command-dropdown {
+            padding: 8px;
+            font-family: monospace;
+            border: 1px solid #444;
+            background: #2d2d2d;
+            color: #d4d4d4;
+            border-radius: 4px;
+            min-width: 150px;
+        }
         button { 
             background: #0078d4; 
             color: white; 
@@ -80,8 +104,21 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
         <div class="controls">
             <button onclick="clearConsole()">Clear</button>
             <button onclick="saveConsole()">Save Log</button>
+            <button onclick="scrollToTop()">Scroll to Top</button>
             <button onclick="scrollToBottom()">Scroll to Bottom</button>
             <button onclick="toggleAutoScroll()" id="autoScrollBtn">Auto-scroll: ON</button>
+        </div>
+        <div class="command-controls">
+            <input type="text" id="messageInput" class="command-input" placeholder="Type custom command">
+            <button onclick="sendInputMessage()">Write Bytes</button>
+            <select id="commandDropdown" class="command-dropdown">
+                <option value="">-- Select Command --</option>
+                <option value="Cycle">Cycle Display</option>
+                <option value="ZoomMap">Zoom Map</option>
+                <option value="ota-off">OTA Off</option>
+                <option value="reboot">Reboot</option>
+            </select>
+            <button onclick="sendDropdownMessage()">Send</button>
         </div>
         <div id="console"></div>
         <div id="status" class="status disconnected">Disconnected</div>
@@ -97,7 +134,7 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
 
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = protocol + '//' + window.location.hostname + ':' + window.location.port + '/webserial';
+            const wsUrl = protocol + '//' + window.location.hostname + ':' + window.location.port + '/webserialws';
             
             ws = new WebSocket(wsUrl);
             
@@ -152,6 +189,10 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
             window.URL.revokeObjectURL(url);
         }
 
+        function scrollToTop() {
+            console.scrollTop = 0;
+        }
+
         function scrollToBottom() {
             console.scrollTop = console.scrollHeight;
         }
@@ -160,6 +201,46 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
             autoScroll = !autoScroll;
             autoScrollBtn.textContent = 'Auto-scroll: ' + (autoScroll ? 'ON' : 'OFF');
         }
+
+        function sendInputMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (message && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+                addToConsole('>>> Sent (input): ' + message + '\n');
+                messageInput.value = '';
+            } else if (!message) {
+                alert('Please enter a message');
+            } else {
+                alert('WebSocket not connected');
+            }
+        }
+
+        function sendDropdownMessage() {
+            const dropdown = document.getElementById('commandDropdown');
+            const command = dropdown.value;
+            
+            if (command && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(command);
+                addToConsole('>>> Sent (dropdown): ' + command + '\n');
+                // Don't clear dropdown selection - keep it for repeated use
+            } else if (!command) {
+                alert('Please select a command from dropdown');
+            } else {
+                alert('WebSocket not connected');
+            }
+        }
+
+        // Allow Enter key to send input message
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendInputMessage();
+                }
+            });
+        });
 
         // Auto-connect on load
         connect();

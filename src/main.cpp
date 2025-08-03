@@ -6,8 +6,6 @@
 #include <WebSerial.h>
 #include "SerialConfig.h"
 
-//#define USE_WEBSERIAL
-
 #include <esp_now.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -171,7 +169,7 @@ void initialiseRTCfromNTP();
 bool detectTimezoneFromIP(long& timezoneOffset);
 bool detectTimezoneFromGPS(double lat, double lon);
 bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset);
-bool cycleDisplays(const bool refreshCurrentDisplay = false);
+bool cycleDisplays(bool refreshCurrentDisplay = false, int setDisplayTo = 0);
 bool checkReedSwitches();
 void shutdownIfUSBPowerOff();
 void publishToMakoTestMessage(const char* testMessage);

@@ -124,9 +124,15 @@ void resetClock()
   mode_ = 3; // change back to 3
 }
 
-bool cycleDisplays(const bool refreshCurrentDisplay)
+bool cycleDisplays(bool refreshCurrentDisplay, int setDisplayTo)
 {
     bool changeMade = true;
+
+    if (setDisplayTo > 0)
+    {
+      mode_ = setDisplayTo;
+      refreshCurrentDisplay = true;
+    }
 
     dumpHeapUsage("cycleDisplays(): ");
     if (refreshCurrentDisplay)

@@ -19,7 +19,7 @@ void showOTARecoveryScreen()
 
   if (otaActive)
   {
-    M5.Lcd.println(" Lemon OTA\n    Ready\n");
+    M5.Lcd.println(" Tiger OTA\n    Ready\n");
     M5.Lcd.setTextSize(1);
     M5.Lcd.println("");
     M5.Lcd.setTextSize(2);
@@ -53,12 +53,14 @@ void disableFeaturesForOTA(bool screenToRed=true)
 {
   haltAllProcessingDuringOTAUpload = true;
 
-  writeLogToSerial = false;
+  // Keep serial logging active for the /logs page during OTA
+  // writeLogToSerial = false;  // Commented out to allow logs page to work
 
   if (mapScreen.get())
     mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
-  WebSerial.closeAll();   // close all websocket connetions for WebSerial
+  // Don't close WebSerial connections - we want the /logs page to work
+  // WebSerial.closeAll();   // close all websocket connetions for WebSerial
   
   // Critical: Stop ESP-NOW before OTA to prevent queue corruption
   if (ESPNowActive) {
@@ -86,7 +88,9 @@ bool systemStartupAndCheckForOTADemand()
 {
   M5.begin();
 
-  USB_SERIAL.begin(115200);
+  #ifndef USE_WEBSERIAL
+    USB_SERIAL.begin(115200);
+  #endif
 
   initRedLed();
 
@@ -251,20 +255,62 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
 
   if (d == "ON"){
     setRedLEDOn();
+    USB_SERIAL_PRINTLN("LED turned ON via WebSerial command");
   }
   else if (d=="OFF"){
     setRedLEDOff();
+    USB_SERIAL_PRINTLN("LED turned OFF via WebSerial command");
   }
   else if (d=="serial-off")
   {
     writeLogToSerial = false;
     WebSerial.closeAll();
+    USB_SERIAL_PRINTLN("Serial logging disabled via WebSerial command");
+  }
+  else if (d=="Cycle" || d=="cycle")
+  {
+    USB_SERIAL_PRINTLN("Display cycle requested via WebSerial command");
+    cycleDisplays();
+  }
+  else if (d=="ZoomMap" || d=="zoommap")
+  {
+    USB_SERIAL_PRINTLN("Zoom map requested via WebSerial command");
+    cycleDisplays(true, 6); // set to map screen
+
+    if (mapScreen.get()) {
+      mapScreen->cycleZoom();
+      mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
+      USB_SERIAL_PRINTLN("Map zoom cycled");
+    } else {
+      USB_SERIAL_PRINTLN("Map screen not available");
+    }
+  }
+  else if (d=="restart" || d=="reboot")
+  {
+    USB_SERIAL_PRINTLN("Reboot requested via WebSerial command");
+    esp_restart();
+  }
+  else if (d=="ota-off")
+  {
+    USB_SERIAL_PRINTLN("OTA off requested via WebSerial command");
+
+    // Turn ota off and re-restablish ESP-Now comms
+  }
+  else
+  {
+    USB_SERIAL_PRINTF("Unknown WebSerial command: %s\n", d.c_str());
   }
 }
 
 
 void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
 {
+  USB_SERIAL_PRINTLN("OTA Upload starting - closing WebSerial connections");
+  
+  // Now that actual upload is starting, close WebSerial for safety
+  WebSerial.closeAll();
+  writeLogToSerial = false;
+  
   disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
   dumpHeapUsage("uploadOTABeginCallback: ");
 }
