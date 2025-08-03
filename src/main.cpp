@@ -360,11 +360,6 @@ void setup()
 
 void setPrimaryControls(const bool useReedSwitches)
 {
-  ReedSwitchGoProTop.reset();
-  ReedSwitchGoProSide.reset();
-  M5.BtnA.reset();
-  M5.BtnB.reset();
-
   if (useReedSwitches)
   {
     p_primaryButton = &ReedSwitchGoProTop;
