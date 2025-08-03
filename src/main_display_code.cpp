@@ -1,8 +1,18 @@
 #ifdef BUILD_INCLUDE_MAIN_DISPLAY_CODE
 
+// External reference to cached AXP temperature
+extern float cachedAXPTemperature;
+
+// External reference to leak alarm state
+extern bool leakAlarmCurrentlyShowing;
 
 void drawDisplay()
 {
+  // Don't draw normal display if leak alarm is currently showing
+  if (leakAlarmCurrentlyShowing) {
+    return;
+  }
+  
   // draw display
   if ( mode_ == 6) { drawMapDisplay();}
   if ( mode_ == 5) { drawCurrentTargetTempDisplay();}
@@ -85,18 +95,25 @@ void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2)
   M5.Lcd.setTextFont(0);
   M5.Lcd.setTextColor(TFT_ORANGE,TFT_BLACK);
 
-  M5.Lcd.setCursor(5,5);
-  M5.Lcd.printf("%i%i",h1,h2);
-  M5.Lcd.setCursor(M5.Lcd.getCursorX()-10,M5.Lcd.getCursorY());
-  M5.Lcd.printf(":\n",h1,h2);
-  M5.Lcd.setCursor(M5.Lcd.getCursorX()+5,M5.Lcd.getCursorY());
-  M5.Lcd.printf("%i%i",i1,i2);
+  // Use fixed positions to avoid cursor calculation issues
+  // Hours (2 digits)
+  M5.Lcd.setCursor(5, 5);
+  M5.Lcd.printf("%d%d", h1, h2);
+  
+  // Colon
+  M5.Lcd.setCursor(85, 5);  // Fixed position for colon
+  M5.Lcd.printf(":");
+  
+  // Minutes (2 digits)
+  M5.Lcd.setCursor(105, 5);  // Fixed position for minutes
+  M5.Lcd.printf("%d%d", i1, i2);
 
+  // Seconds (smaller text, if provided)
   if (s1 != -1 && s2 != -1)
   {
     M5.Lcd.setTextSize(4);
-    M5.Lcd.setCursor(50,120);
-    M5.Lcd.printf("%i%i",s1,s2);
+    M5.Lcd.setCursor(50, 120);
+    M5.Lcd.printf("%d%d", s1, s2);
   }
 }
 
@@ -111,43 +128,33 @@ void drawClockDisplay()
   int s1 = int(RTC_TimeStruct.Seconds / 10 );
   int s2 = int(RTC_TimeStruct.Seconds - s1*10 );
 
-  // print current and voltage of USB
-  if (showPowerStats)
-  {
-    M5.Lcd.setCursor(5,5);
-    M5.Lcd.printf("USB %.1fV, %.0fma\n",  M5.Axp.GetVBusVoltage(),M5.Axp.GetVBusCurrent());
-    M5.Lcd.printf("Batt Charge %.0fma\n",  M5.Axp.GetBatChargeCurrent());
-    M5.Lcd.printf("Batt %.1fV %.0fma\n",  M5.Axp.GetBatVoltage(), M5.Axp.GetBatCurrent());
-  }
-  else
-  {
-    drawDigits(h1, h2, i1, i2, s1, s2);
+  drawDigits(h1, h2, i1, i2, s1, s2);
 
-    M5.Lcd.setTextSize(2);
-     
-    M5.Lcd.setCursor(35, mode_label_y_offset+28);
-    if (otaActive)
-    {
-      M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-      M5.Lcd.printf("OTA On");
-    }
-    else if (isPairedWithMako && ESPNowActive)
-    {
-      M5.Lcd.setCursor(25, mode_label_y_offset+28);
-      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-      M5.Lcd.printf("ESPNow+");
-    }
-    else if (!isPairedWithMako)
-    {
-      M5.Lcd.setCursor(25, mode_label_y_offset+28);
-      M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-      M5.Lcd.printf("Paired-");
-    }
+  M5.Lcd.setTextSize(2);
     
-    M5.Lcd.setCursor(12, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
-    M5.Lcd.printf("AXP %.1fC",M5.Axp.GetTempInAXP192());
+  M5.Lcd.setCursor(35, mode_label_y_offset+28);
+  if (otaActive)
+  {
+    M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
+    M5.Lcd.printf("OTA On");
   }
+  else if (isPairedWithMako && ESPNowActive)
+  {
+    M5.Lcd.setCursor(25, mode_label_y_offset+28);
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    M5.Lcd.printf("ESPNow+");
+  }
+  else if (!isPairedWithMako)
+  {
+    M5.Lcd.setCursor(25, mode_label_y_offset+28);
+    M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+    M5.Lcd.printf("Paired-");
+  }
+  
+  // Position temperature to the left of seconds, aligned with first digit of minutes
+  M5.Lcd.setCursor(5, 130);  // x=5 (left of seconds at x=50), y=120 (same as seconds)
+  M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
+  M5.Lcd.printf("%.0fC", cachedAXPTemperature);
 }
 
 
