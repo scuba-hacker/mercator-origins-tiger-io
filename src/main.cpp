@@ -4,14 +4,9 @@
 #include <MapScreen_M5.h>
 
 #include <WebSerial.h>
+#include "SerialConfig.h"
 
 //#define USE_WEBSERIAL
-
-#ifdef USE_WEBSERIAL
-  #define USB_SERIAL WebSerial
-#else
-  #define USB_SERIAL Serial
-#endif
 
 #include <esp_now.h>
 #include <WiFi.h>
@@ -28,6 +23,8 @@
 AsyncElegantOtaClass AsyncElegantOTA;
 
 #include <memory.h>
+#include "soc/rtc_wdt.h"
+#include "esp_task_wdt.h"
 #include <time.h>
 
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
@@ -35,7 +32,7 @@ AsyncElegantOtaClass AsyncElegantOTA;
 
 bool writeLogToSerial=false;
 bool testPreCannedLatLong=false;       // test that animates the diver sprite through slow movements across the lake.
-bool goProButtonsPrimaryControl = true;
+bool goProButtonsPrimaryControl = false;
 
 bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
 
@@ -43,6 +40,9 @@ const bool enableESPNow = !enableOTAServerAtStartup; // cannot have OTA server o
 
 const String ssid_not_connected = "-";
 String ssid_connected;
+
+const char* buildTimestamp = __DATE__ " " __TIME__;
+
 
 // ************** ESPNow variables **************
 
@@ -70,26 +70,42 @@ bool ESPNowActive = false;
 const int SCREEN_LENGTH = 240;
 const int SCREEN_WIDTH = 135;
 
-const uint8_t BUTTON_REED_TOP_PIN=25;
-const uint8_t BUTTON_REED_SIDE_PIN=0;
+const uint8_t REED_GOPRO_TOP_GPIO=25;
+const uint8_t REED_GOPRO_SIDE_GPIO=0;
 const uint8_t UNUSED_GPIO_36_PIN=36;
 const uint8_t M5_POWER_SWITCH_PIN=255;
 const uint32_t MERCATOR_DEBOUNCE_MS=100;
 const uint8_t PENETRATOR_LEAK_DETECTOR_PIN=26;
 
-Button ReedSwitchGoProTop = Button(BUTTON_REED_TOP_PIN, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
-Button ReedSwitchGoProSide = Button(BUTTON_REED_SIDE_PIN, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
+Button ReedSwitchGoProTop = Button(REED_GOPRO_TOP_GPIO, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
+Button ReedSwitchGoProSide = Button(REED_GOPRO_SIDE_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 Button LeakDetectorSwitch = Button(PENETRATOR_LEAK_DETECTOR_PIN, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount = 0, topCount = 0;
+
+bool isTopReedClosed() { // Direct GPIO Read Bypass button press code
+  return digitalRead(REED_GOPRO_TOP_GPIO) == false;
+}
+
+bool isSideReedClosed() { // Direct GPIO Read Bypass button press code
+  return digitalRead(REED_GOPRO_SIDE_GPIO) == false;
+}
+
+bool isLeakDetected() { // Direct GPIO Read Bypass button press code
+  return digitalRead(PENETRATOR_LEAK_DETECTOR_PIN) == false;
+}
 
 bool topReedActiveAtStartup = false;
 bool sideReedActiveAtStartup = false;
 
+  
+bool recoveryScreenShown = false;
 
 const uint16_t mode_label_y_offset = 170;
 
 AsyncWebServer asyncWebServer(80);      // OTA updates
 bool otaActive=false;   // OTA updates toggle
+uint32_t restartAfterGoodOTAUpdateAt = millis() + 3000;
+uint32_t restartForGoodOTAScheduled = false;
 
 Button* p_primaryButton = NULL;
 Button* p_secondButton = NULL;
@@ -138,23 +154,24 @@ bool checkReedSwitches();
 void publishToMakoTestMessage(const char* testMessage);
 void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
 void publishToMakoLeakDetected();
-void vfd_3_line_clock();
-void vfd_5_current_target();
-void vfd_6_map();
+void drawClockDisplay();
+void drawCurrentTargetTempDisplay();
+void drawDisplay();
+void drawMapDisplay();
 void getTime(char* time);
-void draw_digits(int h1, int h2, int i1, int i2, int s1, int s2);
-void draw_digit_text(int h1, int h2, int i1, int i2, int s1, int s2);
+void drawDigits(int h1, int h2, int i1, int i2, int s1, int s2);
+void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2);
 void resetCurrentTarget();
 void resetMap();
 void resetClock();
 void fadeToBlackAndShutdown();
 const char* scanForKnownNetwork();
 bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly = false);
-void toggleOTAActiveAndWifiIfUSBPowerOff();
 void updateButtonsAndBuzzer();
 void readAndTestGoProReedSwitches();
 bool leakAlarmActive = false;
-void checkForLeak(const char* msg, const uint8_t pin);
+void checkForLeak(const char* msg);
+void checkUSBPowerAndAutoShutdown();
 void InitESPNow();
 void configAndStartUpESPNow();
 void configESPNowDeviceAP();
@@ -168,122 +185,22 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
 
-uint8_t redLEDStatus = HIGH;
+uint8_t redLEDStatus = HIGH;  // HIGH == off, LOW == on
 
-void toggleRedLED()
-{
-  redLEDStatus = (redLEDStatus == HIGH ? LOW : HIGH );
-  digitalWrite(RED_LED_GPIO, redLEDStatus);
+void toggleRedLED() {
+  redLEDStatus = (redLEDStatus == HIGH ? LOW : HIGH ); digitalWrite(RED_LED_GPIO, redLEDStatus);
 }
 
-void  initialiseRTCfromNTP()
-{
-  const uint8_t max_NTP_connect_attempts=10;
+void setRedLEDOn() {
+  redLEDStatus = LOW; digitalWrite(RED_LED_GPIO, redLEDStatus);
+}
 
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0,0);
+void setRedLEDOff() {
+  redLEDStatus = HIGH; digitalWrite(RED_LED_GPIO, redLEDStatus);
+}
 
-  const bool wifiOnly = true;
-
-  M5.Lcd.println("Get Time...\n\n");
-  delay(1000);
-
-  const int maxWifiScanAttempts = 2;  
-  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts))
-  {
-    M5.Lcd.println("Wifi OK");
-  
-    //init and get the time
-    _initialiseTimeFromNTP:
-    
-    struct tm timeinfo;
-    for (uint8_t i=0; i<max_NTP_connect_attempts; i++)
-    {
-      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-      if(!getLocalTime(&timeinfo))
-      {
-        if (writeLogToSerial)
-          USB_SERIAL.println("No time available (yet)");
-        // Let RTC continue with existing settings
-        M5.Lcd.println("Wait for NTP Time\n");
-        delay(500);
-      }
-      else
-      {
-        break;        
-      }
-    }
-
-    if(!getLocalTime(&timeinfo))
-    {      
-      // Let RTC continue with existing settings
-      M5.Lcd.println("No NTP Server\n");
-    }
-    else
-    {
-      if (writeLogToSerial)
-        USB_SERIAL.println("NTP time received");
-      // Use NTP to update RTC
-    
-      RTC_TimeTypeDef TimeStruct;
-      TimeStruct.Hours   = timeinfo.tm_hour;
-      TimeStruct.Minutes = timeinfo.tm_min;
-      TimeStruct.Seconds = timeinfo.tm_sec;
-      M5.Rtc.SetTime(&TimeStruct);
-
-      RTC_DateTypeDef DateStruct;
-      DateStruct.Month = timeinfo.tm_mon+1;
-      DateStruct.Date = timeinfo.tm_mday;
-      DateStruct.Year = timeinfo.tm_year+1900;
-      DateStruct.WeekDay = timeinfo.tm_wday;
-      M5.Rtc.SetDate(&DateStruct);    
-      if (daylightOffset_sec == 0)
-        M5.Lcd.println("RTC to GMT");
-      else
-        M5.Lcd.println("RTC set to BST");
-  
-      delay(300);
-    }
-
-    if (daylightOffset_sec == 0)
-    {
-      // check if British Summer Time
-
-      int day = timeinfo.tm_wday;
-      int date = timeinfo.tm_mday;
-      int month = timeinfo.tm_mon;
-
-      if (month == 2 && date > 24)    // is date after or equal to last Sunday in March?
-      {
-        if (date - day >= 25)
-        {
-          daylightOffset_sec=3600;
-          // reinitialise time from NTP with correct offset.
-          // this doesn't deal with the exact changeover time for BST, but doesn't matter
-          goto _initialiseTimeFromNTP;
-        }
-      }
-    }
-
-    if (!enableOTAServerAtStartup)
-    {
-        //disconnect WiFi as it's no longer needed
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
-        M5.Lcd.println("WiFi Off");
-    }
-  }
-  else
-  {
-    M5.Lcd.println(" FAILED");
-    delay(5000);
-  }
-
-  M5.Lcd.fillScreen(BLACK);
-  
-  M5.Lcd.setRotation(0);
-
-  resetClock();
+void initRedLed() {
+  pinMode(RED_LED_GPIO, OUTPUT); setRedLEDOff();
 }
 
 void dumpHeapUsage(const char* msg)
@@ -292,60 +209,75 @@ void dumpHeapUsage(const char* msg)
   {
     multi_heap_info_t info;
     heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT); // internal RAM, memory capable to store data or to create new task
-    USB_SERIAL.printf("\n%s : free heap bytes: %i  largest free heap block: %i min free ever: %i\n",  msg, info.total_free_bytes, info.largest_free_block, info.minimum_free_bytes);
+    USB_SERIAL_PRINTF("\n%s : free heap bytes: %i  largest free heap block: %i min free ever: %i\n",  msg, info.total_free_bytes, info.largest_free_block, info.minimum_free_bytes);
   }
 }
+
 void showOTARecoveryScreen()
 {
+  M5.Lcd.setRotation(1);
   M5.Lcd.fillScreen(TFT_GREEN);
   M5.Lcd.setCursor(5,5);
-  M5.Lcd.setTextColor(TFT_WHITE,TFT_GREEN);
+  M5.Lcd.setTextColor(TFT_BLACK,TFT_GREEN);
   M5.Lcd.setTextSize(3);
 
   if (otaActive)
   {
-    M5.Lcd.printf("OTA\nRecover\nActive\n\n%s",WiFi.localIP().toString());
+    M5.Lcd.println("  Mako OTA\n    Ready\n");
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.println("");
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.printf("%s  Build:\n",WiFi.localIP().toString().c_str());
   }
   else
   {
-    M5.Lcd.print("OTA\nRecover\nNo WiFi\n\n");
+    M5.Lcd.print("OTA\nOff\nNo WiFi\n\n");
   }
 
-  while (true)
-    delay(1000);
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.println("");
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.println(buildTimestamp);
 }
 
-
 bool haltAllProcessingDuringOTAUpload = false;
+bool forceLoopInitialOTAEnablement = false;
+
+void disableAllWatchdogs() {
+  // Disable task watchdog for current task
+  esp_task_wdt_delete(NULL);
+
+  // Disable system-wide task watchdogs
+  esp_task_wdt_deinit();
+
+  // Disable RTC watchdog
+  rtc_wdt_protect_off();
+  rtc_wdt_disable();
+  rtc_wdt_protect_on();
+}
 
 void disableFeaturesForOTA(bool screenToRed=true)
 {
   haltAllProcessingDuringOTAUpload = true;
 
+  writeLogToSerial = false;
+
   mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
   WebSerial.closeAll();   // close all websocket connetions for WebSerial
 }
-
-void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
-{
-  disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
-}
-
 void setup()
 {
   M5.begin();
-  
+    
   dumpHeapUsage("Setup(): start");
   currentTarget[0]='\0';
   previousTarget[0]='\0';
 
-  pinMode(RED_LED_GPIO, OUTPUT); // Red LED - the interior LED to M5 Stick
-  digitalWrite(RED_LED_GPIO, redLEDStatus);
-
+  initRedLed();
+  
 #ifndef USE_WEBSERIAL
-  if (writeLogToSerial)
-    USB_SERIAL.begin(115200);
+  USB_SERIAL.begin(115200);
 #endif
 
   ssid_connected = ssid_not_connected;
@@ -353,17 +285,16 @@ void setup()
   uint32_t start = millis();
   while(millis() < start + 2000)
   {
-    if (digitalRead(BUTTON_REED_TOP_PIN) == false)
+    if (isTopReedClosed())
     {
       enableOTAServerAtStartup = true;
       topReedActiveAtStartup = true;
       break;
     }
 
-    if (digitalRead(BUTTON_REED_SIDE_PIN) == false)
+    if (isSideReedClosed())
     {
-      sideReedActiveAtStartup = true;
-      // no function currently - could be used for show test track
+      // Cannot use this as side GPIO = 0 , a strapping pin
       break;
     }
   }
@@ -396,13 +327,10 @@ void setup()
 
   msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
-  if (writeLogToSerial)
-  {
-    if (msgsReceivedQueue == nullptr)
-      USB_SERIAL.println("Failed to create queue");
-    else
-      USB_SERIAL.println("Created msg queue");
-  }
+  if (msgsReceivedQueue == nullptr)
+    USB_SERIAL_PRINTLN("Failed to create queue");
+  else
+    USB_SERIAL_PRINTLN("Created msg queue");
 
   if (msgsReceivedQueue)
   {
@@ -439,40 +367,10 @@ void setup()
   dumpHeapUsage("Setup(): end ");
 }
 
-bool pairWithMako()
+
+void checkForLeak(const char* msg)
 {
-  if (ESPNowActive && !isPairedWithMako)
-  {
-    M5.Lcd.fillScreen(TFT_BLACK);
-    M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
-    M5.Lcd.setCursor(0,0);
-    const int pairAttempts = 5;
-    isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
-
-    if (isPairedWithMako)
-    {
-      // send message to tiger to give first target
-      publishToMakoTestMessage("Conn Ok");
-    }
-  }
-
-  return isPairedWithMako;
-}
-
-void checkForLeak(const char* msg, const uint8_t pin)
-{
-  bool leakStatus = false;
-
-  if (pin == M5_POWER_SWITCH_PIN && M5.Axp.GetBtnPress())
-  {
-    leakStatus = true;
-  }
-  else
-  {
-    leakStatus = !(digitalRead(pin));
-  }
-
-  if (leakStatus)
+  if (isLeakDetected())
   {
     leakAlarmActive = true;
 
@@ -501,34 +399,6 @@ void checkForLeak(const char* msg, const uint8_t pin)
     M5.Beep.mute();
 
     publishToMakoLeakDetected();
-  }
-}
-
-void readAndTestGoProReedSwitches()
-{
-  updateButtonsAndBuzzer();
-
-  bool btnTopPressed = p_primaryButton->pressedFor(15);
-  bool btnSidePressed = p_secondButton->pressedFor(15);
-
-  if (btnTopPressed && btnSidePressed)
-  {
-    sideCount++;
-    topCount++;
-    M5.Lcd.setCursor(5, 5);
-    M5.Lcd.printf("TOP+SIDE %d %d", topCount, sideCount);
-  }
-  else if (btnTopPressed)
-  {
-    topCount++;
-    M5.Lcd.setCursor(5, 5);
-    M5.Lcd.printf("TOP %d", topCount);
-  }
-  else if (btnSidePressed)
-  {
-    sideCount++;
-    M5.Lcd.setCursor(5, 5);
-    M5.Lcd.printf("SIDE %d", sideCount);
   }
 }
 
@@ -568,8 +438,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
           resetClock();   // OTA enabled, go back to clock
       else
       {
-        if (writeLogToSerial)
-          USB_SERIAL.println("cycleDisplays Error: invalid mode_");
+        USB_SERIAL_PRINTLN("cycleDisplays Error: invalid mode_");
         changeMade = false;
       }
     }
@@ -588,8 +457,7 @@ bool cycleDisplays(const bool refreshCurrentDisplay)
         resetClock();
       else
       {
-        if (writeLogToSerial)
-          USB_SERIAL.println("cycleDisplays Error: invalid mode_");
+        USB_SERIAL_PRINTLN("cycleDisplays Error: invalid mode_");
         changeMade = false;
       }
     }
@@ -663,20 +531,19 @@ bool checkReedSwitches()
     reedSwitchTop = true;
     changeMade = true;
 
-    if (writeLogToSerial)
-      USB_SERIAL.println("Cycle To Next Display");
+    USB_SERIAL_PRINTLN("Cycle To Next Display");
 
     cycleDisplays();
   }
 
-  // press second button for 5 seconds to attempt WiFi connect and enable OTA
+  // press second button for 10 seconds reboot
   if (p_secondButton->wasReleasefor(10000))
   { 
-    if (writeLogToSerial)
-      USB_SERIAL.println("Reboot");
+    USB_SERIAL_PRINTLN("Reboot");
 
      esp_restart();
   }
+  // press second button for 5 seconds to attempt WiFi connect and enable OTA
   else if (p_secondButton->wasReleasefor(5000))
   { 
     if (mode_ != 6)   // map screen has to be deleted for OTA to be enabled, cannot do this if already in map mode
@@ -702,10 +569,9 @@ bool checkReedSwitches()
       const bool refreshCurrentScreen=true;
       cycleDisplays(refreshCurrentScreen);
     }
-    if (writeLogToSerial)
-      USB_SERIAL.println("Enable OTA Mode");
+    USB_SERIAL_PRINTLN("Enable OTA Mode");
   }
-  // press second button for 1 second...
+  // press second button for 1 second to toggle all features on the map
   else if (p_secondButton->wasReleasefor(1000))
   {
     activationTime = lastSecondButtonPressLasted;
@@ -717,10 +583,9 @@ bool checkReedSwitches()
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
       changeMade = true;
     }
-    if (writeLogToSerial)
-      USB_SERIAL.println("Toggle show all map features");
+    USB_SERIAL_PRINTLN("Toggle show all map features");
   }
-  // press second button for 0.1 second...
+  // tap second button for 0.1 second to change zoom level of map
   else if (p_secondButton->wasReleasefor(100))
   {
     activationTime = lastSecondButtonPressLasted;
@@ -731,15 +596,14 @@ bool checkReedSwitches()
       mapScreen->cycleZoom(); changeMade = true;
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
 
-      if (writeLogToSerial)
-        USB_SERIAL.println("Cycle zoom level on map");
+      USB_SERIAL_PRINTLN("Cycle zoom level on map");
     }
   }
   
+  // Notify Mako of the reed switch being activated
   if (activationTime > 0)
   {
-    if (writeLogToSerial)
-      USB_SERIAL.println("Reed Activated...");
+    USB_SERIAL_PRINTLN("Reed Activated...");
 
     publishToMakoReedActivation(reedSwitchTop, activationTime);
   }
@@ -747,77 +611,9 @@ bool checkReedSwitches()
   return changeMade;
 }
 
-void publishToMakoTestMessage(const char* testMessage)
+void processIncomingESPNowMessages()
 {
-  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
-  {
-    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"T%s",testMessage);
-    if (writeLogToSerial)
-    {
-      USB_SERIAL.println("Sending ESP T msg to Mako...");
-      USB_SERIAL.println(mako_espnow_buffer);
-    }
-
-    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
-  }
-}
-
-void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
-{
-  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
-  {
-    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"R%c%lu       ",(topReed ? 'T' : 'B'),ms);
-    if (writeLogToSerial)
-    {
-      USB_SERIAL.println("Sending ESP R msg to Mako...");
-      USB_SERIAL.println(mako_espnow_buffer);
-    }
-    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
-  }
-  else
-  {
-    if (writeLogToSerial)
-      USB_SERIAL.println("ESPNow inactive - not sending ESP R msg to Mako...");
-  }
-}
-
-uint32_t  nextLeakMessagePublishTime = 0;
-const uint32_t leakMessageDutyCycle = 3000;
-
-void publishToMakoLeakDetected()
-{
-  if (millis() > nextLeakMessagePublishTime)
-  {
-    nextLeakMessagePublishTime = millis() + leakMessageDutyCycle;
-
-    if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
-    {
-      snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"L");
-      if (writeLogToSerial)
-      {
-        USB_SERIAL.println("Sending ESP L msg to Mako...");
-        USB_SERIAL.println(mako_espnow_buffer);
-      }
-      ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
-    }
-    else
-    {
-      if (writeLogToSerial)
-        USB_SERIAL.println("ESPNow inactive - not sending ESP L msg to Mako...");
-    }
-  }
-}
-
-void loop()
-{
-  if (haltAllProcessingDuringOTAUpload)
-  {
-    delay(500);
-    toggleRedLED();
-    return;
-  }
-
-  if (msgsReceivedQueue && !otaActive)
+ if (msgsReceivedQueue && !otaActive)
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
@@ -826,13 +622,6 @@ void loop()
 
       switch(rxQueueItemBuffer[0])
       {
-        /* DISABLED
-        case 'l':   // Bright light detected by Mako - switch to next screen
-        {
-          cycleDisplays();
-          break;
-        }
-*/
         case 'c':   // current target
         {
           if (strcmp(rxQueueItemBuffer+1,currentTarget) != 0)
@@ -872,13 +661,10 @@ void loop()
             refreshTargetShown = true;
           }
 
-          if (writeLogToSerial)
-          {
-            USB_SERIAL.printf("targetCode: %s\n",targetCode);
-            USB_SERIAL.printf("latitude: %f\n",latitude);
-            USB_SERIAL.printf("longitude: %f\n",longitude);
-            USB_SERIAL.printf("heading: %f\n",heading);
-          }
+          USB_SERIAL_PRINTF("targetCode: %s\n",targetCode);
+          USB_SERIAL_PRINTF("latitude: %f\n",latitude);
+          USB_SERIAL_PRINTF("longitude: %f\n",longitude);
+          USB_SERIAL_PRINTF("heading: %f\n",heading);
 
           mapScreen->setTargetWaypointByLabel(targetCode);
 
@@ -901,173 +687,99 @@ void loop()
       }
     }
   }
+}
 
-  if ( mode_ == 6) { vfd_6_map();}
-  if ( mode_ == 5) { vfd_5_current_target();}
-  if ( mode_ == 3 ){ vfd_3_line_clock();}   // hh,mm,ss, optional dd mm
+uint32_t OTAUploadFlashLEDTimer = 0;
+const uint32_t OTAUploadFlashAwaitLEDPeriodicity = 500;
+const uint32_t OTAUploadFlashInProgressLEDPeriodicity = 250;
 
-//  readAndTestGoProReedSwitches();
+uint32_t OTAUploadFlashCurrentLEDPeriodicity = OTAUploadFlashAwaitLEDPeriodicity;
+uint32_t recoveryScreenStartTime = 0;
 
+
+bool cutShortLoopOnOTADemand()
+{
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////// PROTECTED - DO NOT ADD CODE IN THE BELOW PROTECTED AREA - RISK OF OTA FAILURE
+  ////////////////////////////////////////////////////////////////////////////////////////////////////  
+  if (haltAllProcessingDuringOTAUpload)
+  {
+    // Handle OTA restart if scheduled
+    if (restartForGoodOTAScheduled && millis() >= restartAfterGoodOTAUpdateAt) {
+        ESP.restart();
+    }
+
+    if (forceLoopInitialOTAEnablement)
+    {
+      forceLoopInitialOTAEnablement = false;
+      M5.Lcd.fillScreen(TFT_BLACK);
+      const bool wifiOnly = false;
+      const int maxWifiScanAttempts = 3;
+      otaActive = connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts);
+    }
+
+    if (!recoveryScreenShown) 
+    {
+      showOTARecoveryScreen();
+      recoveryScreenStartTime = millis();
+      recoveryScreenShown = true;
+    }
+
+    if (millis() > OTAUploadFlashLEDTimer)
+    {
+      OTAUploadFlashLEDTimer += OTAUploadFlashCurrentLEDPeriodicity;
+      toggleRedLED();
+    }
+
+    // After 5 seconds of recovery screen, allow restart if any button is pressed 
+    if (recoveryScreenShown && (millis() - recoveryScreenStartTime > 5000)) 
+    {            
+      // check if either button is pressed once 5 seconds has passed since ota screen was shown
+      
+      if (isTopReedClosed() || isSideReedClosed()) {
+        M5.Lcd.fillScreen(TFT_GREEN);
+        M5.Lcd.setCursor(0,10);
+        M5.Lcd.setTextSize(3);
+        M5.Lcd.println(" ########### ");
+        M5.Lcd.println("#           #");
+        M5.Lcd.println("# Rebooting #");
+        M5.Lcd.println("#           #");
+        M5.Lcd.println(" ########### ");
+        delay(1000);
+        esp_restart();
+      }
+    }
+  }
+  return haltAllProcessingDuringOTAUpload;
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////// PROTECTED - DO NOT ADD CODE IN THE ABOVE PROTECTED AREA - RISK OF OTA FAILURE
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+}
+
+/////////////// EVENT LOOP
+void loop()
+{
+  //////// PROTECTED - DO NOT ADD CODE BEFORE OR WITHIN THE OTA DEMAND CHECK BELOW  - RISK OF OTA FAILURE
+  if (cutShortLoopOnOTADemand())
+    return;
+  ///////////////////////////////////////////////////////////////////////////////////////
+
+  // check for incoming messages
+  processIncomingESPNowMessages();
+
+  drawDisplay();
+  
   for (int m=0;m<10;m++)
   {
     delay(50);
-    checkForLeak(leakAlarmMsg,PENETRATOR_LEAK_DETECTOR_PIN);
+    checkForLeak(leakAlarmMsg);
 
     if (checkReedSwitches()) // If a change occurred break out of wait loop to make change asap.
     {
       break;
     }
   }
-}
-
-void vfd_6_map()
-{
-  // do nothing
-}
-
-void vfd_5_current_target()
-{
-  if (refreshTargetShown)
-  {
-    M5.Lcd.fillScreen(TFT_BLACK);
-    refreshTargetShown = false;
-  }
-
-  if (ESPNowActive && isPairedWithMako)
-  {    
-    M5.Lcd.setCursor(0,0);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_YELLOW,TFT_BLACK);
-    M5.Lcd.println(currentTarget);
-  }
-  else
-  {
-    M5.Lcd.setCursor(0,0);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_RED,TFT_BLACK);
-
-    if (!ESPNowActive)
-      M5.Lcd.println("  No\nTarget\n\nESPNow\nIs Off\n");
-    else
-      M5.Lcd.println("  No\nTarget\n\nESPNow\nNo Pair\n");
-    
-    if (otaActive)
-    {
-      M5.Lcd.setTextColor(TFT_GREEN,TFT_BLACK);
-      M5.Lcd.println("OTA On\n");        
-    }
-    else
-    { 
-      M5.Lcd.println("OTA Off\n");
-    }
-  }
-
-  if (otaActive)
-  {
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.setCursor(0, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-    M5.Lcd.printf("%s",WiFi.localIP().toString());
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.println("");
-    M5.Lcd.setTextSize(3);
-  }
-  else
-  {
-    M5.Lcd.setCursor(0, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-    M5.Lcd.println("Towards");
-  }  
-  M5.Lcd.setCursor(28, mode_label_y_offset+38);
-  M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
-  getTime(currentTime);
-  M5.Lcd.printf("%s",currentTime);  
-}
-
-void draw_digits(int h1, int h2, int i1, int i2, int s1, int s2)
-{
-  draw_digit_text(h1,h2,i1,i2,s1,s2);
-}
-
-
-void draw_digit_text(int h1, int h2, int i1, int i2, int s1, int s2)
-{
-  M5.Lcd.setTextSize(9);
-  M5.Lcd.setTextFont(0);
-  M5.Lcd.setTextColor(TFT_ORANGE,TFT_BLACK);
-
-  M5.Lcd.setCursor(5,5);
-  M5.Lcd.printf("%i%i",h1,h2);
-  M5.Lcd.setCursor(M5.Lcd.getCursorX()-10,M5.Lcd.getCursorY());
-  M5.Lcd.printf(":\n",h1,h2);
-  M5.Lcd.setCursor(M5.Lcd.getCursorX()+5,M5.Lcd.getCursorY());
-  M5.Lcd.printf("%i%i",i1,i2);
-
-  if (s1 != -1 && s2 != -1)
-  {
-    M5.Lcd.setTextSize(4);
-    M5.Lcd.setCursor(50,120);
-    M5.Lcd.printf("%i%i",s1,s2);
-  }
-}
-
-void vfd_3_line_clock()
-{    // Clock mode - Hours, mins, secs with optional date
-  M5.Rtc.GetTime(&RTC_TimeStruct);
-  M5.Rtc.GetDate(&RTC_DateStruct);
-  int h1 = int(RTC_TimeStruct.Hours / 10 );
-  int h2 = int(RTC_TimeStruct.Hours - h1*10 );
-  int i1 = int(RTC_TimeStruct.Minutes / 10 );
-  int i2 = int(RTC_TimeStruct.Minutes - i1*10 );
-  int s1 = int(RTC_TimeStruct.Seconds / 10 );
-  int s2 = int(RTC_TimeStruct.Seconds - s1*10 );
-
-  // print current and voltage of USB
-  if (showPowerStats)
-  {
-    M5.Lcd.setCursor(5,5);
-    M5.Lcd.printf("USB %.1fV, %.0fma\n",  M5.Axp.GetVBusVoltage(),M5.Axp.GetVBusCurrent());
-    M5.Lcd.printf("Batt Charge %.0fma\n",  M5.Axp.GetBatChargeCurrent());
-    M5.Lcd.printf("Batt %.1fV %.0fma\n",  M5.Axp.GetBatVoltage(), M5.Axp.GetBatCurrent());
-  }
-  else
-  {
-    draw_digits(h1, h2, i1, i2, s1, s2);
-
-    M5.Lcd.setTextSize(2);
-     
-    M5.Lcd.setCursor(35, mode_label_y_offset+28);
-    if (otaActive)
-    {
-      M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-      M5.Lcd.printf("OTA On");
-    }
-    else if (isPairedWithMako && ESPNowActive)
-    {
-      M5.Lcd.setCursor(25, mode_label_y_offset+28);
-      M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-      M5.Lcd.printf("ESPNow+");
-    }
-    else if (!isPairedWithMako)
-    {
-      M5.Lcd.setCursor(25, mode_label_y_offset+28);
-      M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-      M5.Lcd.printf("Paired-");
-    }
-    
-    M5.Lcd.setCursor(12, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
-    M5.Lcd.printf("AXP %.1fC",M5.Axp.GetTempInAXP192());
-  }
-}
-
-void getTime(char* time)
-{    // Clock mode - Hours, mins, secs with optional date
-  M5.Rtc.GetTime(&RTC_TimeStruct);
-  M5.Rtc.GetDate(&RTC_DateStruct);
-  int h = int(RTC_TimeStruct.Hours);
-  int m = int(RTC_TimeStruct.Minutes);
-  snprintf(time,sizeof(currentTime),"%02d:%02d",h,m);
 }
 
 void updateButtonsAndBuzzer()
@@ -1114,111 +826,10 @@ void updateButtonsAndBuzzer()
   }
 }
 
-void configAndStartUpESPNow()
-{  
-  //Set device in AP mode to begin with
-  WiFi.mode(WIFI_AP);
-  
-  // configure device AP mode
-  configESPNowDeviceAP();
-  
-  // This is the mac address of this peer in AP Mode
-  if (writeLogToSerial)
-  {
-    USB_SERIAL.print("AP MAC: "); 
-    USB_SERIAL.println(WiFi.softAPmacAddress());
-  }
-  // Init ESPNow with a fallback logic
-  InitESPNow();
-  
-  // Once ESPNow is successfully Init, we will register for recv CB to
-  // get recv packer info.
-  esp_now_register_send_cb(OnESPNowDataSent);
-  esp_now_register_recv_cb(OnESPNowDataRecv);
-}
 
-void configESPNowDeviceAP()
-{
-  String Prefix = "Tiger:";
-  String Mac = WiFi.macAddress();
-  String SSID = Prefix + Mac;
-  String Password = "123456789";
-  bool result = WiFi.softAP(SSID.c_str(), Password.c_str(), ESPNOW_CHANNEL, 0);
-
-  if (writeLogToSerial)
-  {
-    if (!result)
-    {
-      USB_SERIAL.println("AP Config failed.");
-    }
-    else
-    {
-      USB_SERIAL.printf("AP Config Success. Broadcasting with AP: %s\n",String(SSID).c_str());
-      USB_SERIAL.printf("WiFi Channel: %d\n",WiFi.channel());
-    }
-  }
-}
-
-void InitESPNow()
-{
-  WiFi.disconnect();
-  if (esp_now_init() == ESP_OK)
-  {
-    if (writeLogToSerial)
-      USB_SERIAL.println("ESPNow Init Success");
-    ESPNowActive = true;
-  }
-  else
-  {
-    if (writeLogToSerial)
-      USB_SERIAL.println("ESPNow Init Failed");
-    ESPNowActive = false;
-  }
-}
-
-// callback when data is sent from Master to Peer
-void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
-{
-  if (status == ESP_NOW_SEND_SUCCESS)
-  {
-    ESPNowMessagesDelivered++;
-  }
-  else
-  {
-    ESPNowMessagesFailedToDeliver++;
-  }
-}
-
-// callback when data is recv from Master
-void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
-{
-  if (writeLogToSerial)
-  {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-    USB_SERIAL.printf("Last Packet Recv from: %s\n",macStr);
-    USB_SERIAL.printf("Last Packet Recv 1st Byte: '%c'\n",*data);
-    USB_SERIAL.printf("Last Packet Recv Length: %d\n",data_len);
-    USB_SERIAL.println((char*)data);
-  }
-
-  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
-}
-
-bool TeardownESPNow()
-{
-  bool result = false;
-
-  if (enableESPNow && ESPNowActive)
-  {
-    WiFi.disconnect();
-    ESPNowActive = false;
-    result = true;
-  }
-  
-  return result;
-}
+////////////////////////////////////////////////////////////////////////
+///////////////////////////////// WiFi/Network/OTA Functions
+////////////////////////////////////////////////////////////////////////
 
 const char* scanForKnownNetwork() // return first known network found
 {
@@ -1253,14 +864,12 @@ const char* scanForKnownNetwork() // return first known network found
   {
       M5.Lcd.printf("Found:\n%s",network);
 
-    if (writeLogToSerial)
-      USB_SERIAL.printf("Found:\n%s\n",network);
+    USB_SERIAL_PRINTF("Found:\n%s\n",network);
   }
   else
   {
     M5.Lcd.println("None\nFound");
-    if (writeLogToSerial)
-      USB_SERIAL.println("No networks Found\n");
+    USB_SERIAL_PRINTLN("No networks Found\n");
   }
 
   // clean up ram
@@ -1279,10 +888,10 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   WebSerial.println(d);
 
   if (d == "ON"){
-    digitalWrite(RED_LED_GPIO, LOW);
+    setRedLEDOn();
   }
   else if (d=="OFF"){
-    digitalWrite(RED_LED_GPIO, HIGH);
+    setRedLEDOff();
   }
   else if (d=="serial-off")
   {
@@ -1291,18 +900,49 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   }
 }
 
+
+void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
+{
+  disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
+}
+
+void uploadOTAProgressCallback(AsyncElegantOtaClass* originator, size_t progress, size_t total) 
+{
+  static uint32_t otaProgressScreenUpdateAt = 0;
+  const uint32_t otaProgressUpdateDisplayDutyCycle = 200;
+
+  // Skip if no total size available
+  if (total == 0) {
+      USB_SERIAL_PRINTF("OTA Progress: skipping, total=0\n");
+      return;
+  }
+  
+  if (millis() > otaProgressScreenUpdateAt) 
+  {
+    OTAUploadFlashCurrentLEDPeriodicity = OTAUploadFlashInProgressLEDPeriodicity;
+    otaProgressScreenUpdateAt = millis() + otaProgressUpdateDisplayDutyCycle;
+    M5.Lcd.setCursor(3, 60);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.printf("%7lu / %-7lu B", progress, total);
+  }  
+}
+
+void uploadOTASucceededCallback(AsyncElegantOtaClass* originator)
+{
+    restartAfterGoodOTAUpdateAt = millis() + 3000;
+    restartForGoodOTAScheduled = true;
+}
+
 bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly)
 {
   if (wifiOnly && WiFi.status() == WL_CONNECTED)
   {
-    if (writeLogToSerial)
-      USB_SERIAL.printf("setupOTAWebServer: attempt to connect wifiOnly, already connected - otaActive=%i\n",otaActive);
+    USB_SERIAL_PRINTF("setupOTAWebServer: attempt to connect wifiOnly, already connected - otaActive=%i\n",otaActive);
 
     return true;
   }
 
-  if (writeLogToSerial)
-    USB_SERIAL.printf("setupOTAWebServer: attempt to connect %s wifiOnly=%i when otaActive=%i\n",_ssid, wifiOnly,otaActive);
+  USB_SERIAL_PRINTF("setupOTAWebServer: attempt to connect %s wifiOnly=%i when otaActive=%i\n",_ssid, wifiOnly,otaActive);
 
   bool forcedCancellation = false;
 
@@ -1332,22 +972,21 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
     {
       dumpHeapUsage("setupOTAWebServer(): after WiFi connect");
 
-      if (writeLogToSerial)
-        USB_SERIAL.println("setupOTAWebServer: WiFi connected ok, starting up OTA");
+      USB_SERIAL_PRINTLN("setupOTAWebServer: WiFi connected ok, starting up OTA");
 
-      if (writeLogToSerial)
-        USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.on");
+      USB_SERIAL_PRINTLN("setupOTAWebServer: calling asyncWebServer.on");
 
       asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
         request->send(200, "text/plain", "To upload firmware use /update");
       });
         
-      if (writeLogToSerial)
-        USB_SERIAL.println("setupOTAWebServer: calling AsyncElegantOTA.begin");
+      USB_SERIAL_PRINTLN("setupOTAWebServer: calling AsyncElegantOTA.begin");
 
       AsyncElegantOTA.setID(MERCATOR_OTA_DEVICE_LABEL);
       AsyncElegantOTA.setUploadBeginCallback(uploadOTABeginCallback);
-      AsyncElegantOTA.begin(&asyncWebServer);    // Start AsyncElegantOTA
+      AsyncElegantOTA.setUploadProgressCallback(uploadOTAProgressCallback);
+      AsyncElegantOTA.setUploadSucceededCallback(uploadOTASucceededCallback);
+      AsyncElegantOTA.begin(&asyncWebServer);
 
       static bool webSerialInitialised = false;
 
@@ -1358,15 +997,13 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
         webSerialInitialised = true;
       }
 
-      if (writeLogToSerial)
-        USB_SERIAL.println("setupOTAWebServer: calling asyncWebServer.begin");
+      USB_SERIAL_PRINTLN("setupOTAWebServer: calling asyncWebServer.begin");
 
       asyncWebServer.begin();
 
       dumpHeapUsage("setupOTAWebServer(): after asyncWebServer.begin");
 
-      if (writeLogToSerial)
-        USB_SERIAL.println("setupOTAWebServer: OTA setup complete");
+      USB_SERIAL_PRINTLN("setupOTAWebServer: OTA setup complete");
 
       M5.Lcd.setRotation(0);
       
@@ -1387,8 +1024,7 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   }
   else
   {
-    if (writeLogToSerial)
-      USB_SERIAL.printf("setupOTAWebServer: WiFi failed to connect %s\n",_ssid);
+    USB_SERIAL_PRINTF("setupOTAWebServer: WiFi failed to connect %s\n",_ssid);
 
     M5.Lcd.print("No Connect");
   }
@@ -1414,15 +1050,15 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
           WiFi.status() == WL_CONNECTED && wifiOnly == false && otaActive == false ) )
   {
     const char* network = scanForKnownNetwork();
-
+  
     if (!network)
     {
-      delay(1000);
+      delay(500);
       continue;
     }
-  
+
     int connectToFoundNetworkAttempts = 3;
-    const int repeatDelay = 1000;
+    const int repeatDelay = 500;
   
     if (strcmp(network,ssid_1) == 0)
     {
@@ -1440,7 +1076,7 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
         delay(repeatDelay);
     }
     
-    delay(1000);
+    delay(repeatDelay);
   }
 
   bool connected=WiFi.status() == WL_CONNECTED;
@@ -1457,6 +1093,297 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts)
   return connected;
 }
 
+void  initialiseRTCfromNTP()
+{
+  const uint8_t max_NTP_connect_attempts=10;
+
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0,0);
+
+  const bool wifiOnly = true;
+
+  M5.Lcd.println("Get Time...\n\n");
+  delay(1000);
+
+  const int maxWifiScanAttempts = 2;  
+  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts))
+  {
+    M5.Lcd.println("Wifi OK");
+  
+    //init and get the time
+    _initialiseTimeFromNTP:
+    
+    struct tm timeinfo;
+    for (uint8_t i=0; i<max_NTP_connect_attempts; i++)
+    {
+      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      if(!getLocalTime(&timeinfo))
+      {
+        USB_SERIAL_PRINTLN("No time available (yet)");
+        // Let RTC continue with existing settings
+        M5.Lcd.println("Wait for NTP Time\n");
+        delay(500);
+      }
+      else
+      {
+        break;        
+      }
+    }
+
+    if(!getLocalTime(&timeinfo))
+    {      
+      // Let RTC continue with existing settings
+      M5.Lcd.println("No NTP Server\n");
+    }
+    else
+    {
+      USB_SERIAL_PRINTLN("NTP time received");
+      // Use NTP to update RTC
+    
+      RTC_TimeTypeDef TimeStruct;
+      TimeStruct.Hours   = timeinfo.tm_hour;
+      TimeStruct.Minutes = timeinfo.tm_min;
+      TimeStruct.Seconds = timeinfo.tm_sec;
+      M5.Rtc.SetTime(&TimeStruct);
+
+      RTC_DateTypeDef DateStruct;
+      DateStruct.Month = timeinfo.tm_mon+1;
+      DateStruct.Date = timeinfo.tm_mday;
+      DateStruct.Year = timeinfo.tm_year+1900;
+      DateStruct.WeekDay = timeinfo.tm_wday;
+      M5.Rtc.SetDate(&DateStruct);    
+      if (daylightOffset_sec == 0)
+        M5.Lcd.println("RTC to GMT");
+      else
+        M5.Lcd.println("RTC set to BST");
+  
+      delay(300);
+    }
+
+    if (daylightOffset_sec == 0)
+    {
+      // check if British Summer Time
+
+      int day = timeinfo.tm_wday;
+      int date = timeinfo.tm_mday;
+      int month = timeinfo.tm_mon;
+
+      if (month == 2 && date > 24)    // is date after or equal to last Sunday in March?
+      {
+        if (date - day >= 25)
+        {
+          daylightOffset_sec=3600;
+          // reinitialise time from NTP with correct offset.
+          // this doesn't deal with the exact changeover time for BST, but doesn't matter
+          goto _initialiseTimeFromNTP;
+        }
+      }
+    }
+
+    if (!enableOTAServerAtStartup)
+    {
+        //disconnect WiFi as it's no longer needed
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        M5.Lcd.println("WiFi Off");
+    }
+  }
+  else
+  {
+    M5.Lcd.println(" FAILED");
+    delay(5000);
+  }
+
+  M5.Lcd.fillScreen(BLACK);
+  
+  M5.Lcd.setRotation(0);
+
+  resetClock();
+}
+
+void getTime(char* time)
+{    // Clock mode - Hours, mins, secs with optional date
+  M5.Rtc.GetTime(&RTC_TimeStruct);
+  M5.Rtc.GetDate(&RTC_DateStruct);
+  int h = int(RTC_TimeStruct.Hours);
+  int m = int(RTC_TimeStruct.Minutes);
+  snprintf(time,sizeof(currentTime),"%02d:%02d",h,m);
+}
+
+////////////////////////////////////////////////////////////////////////
+///////////////////////////////// ESPNow Message Functions
+////////////////////////////////////////////////////////////////////////
+
+void publishToMakoTestMessage(const char* testMessage)
+{
+  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+  {
+    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"T%s",testMessage);
+    USB_SERIAL_PRINTLN("Sending ESP T msg to Mako...");
+    USB_SERIAL_PRINTLN(mako_espnow_buffer);
+
+    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+}
+
+void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
+{
+  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+  {
+    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"R%c%lu       ",(topReed ? 'T' : 'B'),ms);
+    USB_SERIAL_PRINTLN("Sending ESP R msg to Mako...");
+    USB_SERIAL_PRINTLN(mako_espnow_buffer);
+    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+  else
+  {
+    USB_SERIAL_PRINTLN("ESPNow inactive - not sending ESP R msg to Mako...");
+  }
+}
+
+void publishToMakoLeakDetected()
+{
+  static uint32_t  nextLeakMessagePublishTime = 0;
+  const uint32_t   leakMessageDutyCycle = 3000;
+
+  if (millis() > nextLeakMessagePublishTime)
+  {
+    nextLeakMessagePublishTime = millis() + leakMessageDutyCycle;
+
+    if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+    {
+      snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"L");
+      USB_SERIAL_PRINTLN("Sending ESP L msg to Mako...");
+      USB_SERIAL_PRINTLN(mako_espnow_buffer);
+      ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    }
+    else
+    {
+      USB_SERIAL_PRINTLN("ESPNow inactive - not sending ESP L msg to Mako...");
+    }
+  }
+}
+
+////////////////////////////////////////////////////////////////////////
+///////////////////////////////// ESPNow Functions
+////////////////////////////////////////////////////////////////////////
+
+void InitESPNow()
+{
+  WiFi.disconnect();
+  if (esp_now_init() == ESP_OK)
+  {
+    USB_SERIAL_PRINTLN("ESPNow Init Success");
+    ESPNowActive = true;
+  }
+  else
+  {
+    USB_SERIAL_PRINTLN("ESPNow Init Failed");
+    ESPNowActive = false;
+  }
+}
+
+
+void configAndStartUpESPNow()
+{  
+  //Set device in AP mode to begin with
+  WiFi.mode(WIFI_AP);
+  
+  // configure device AP mode
+  configESPNowDeviceAP();
+  
+  // This is the mac address of this peer in AP Mode
+  USB_SERIAL_PRINT("AP MAC: "); 
+  USB_SERIAL_PRINTLN(WiFi.softAPmacAddress());
+  // Init ESPNow with a fallback logic
+  InitESPNow();
+  
+  // Once ESPNow is successfully Init, we will register for recv CB to
+  // get recv packer info.
+  esp_now_register_send_cb(OnESPNowDataSent);
+  esp_now_register_recv_cb(OnESPNowDataRecv);
+}
+
+void configESPNowDeviceAP()
+{
+  String Prefix = "Tiger:";
+  String Mac = WiFi.macAddress();
+  String SSID = Prefix + Mac;
+  String Password = "123456789";
+  bool result = WiFi.softAP(SSID.c_str(), Password.c_str(), ESPNOW_CHANNEL, 0);
+
+  if (!result)
+  {
+    USB_SERIAL_PRINTLN("AP Config failed.");
+  }
+  else
+  {
+    USB_SERIAL_PRINTF("AP Config Success. Broadcasting with AP: %s\n",String(SSID).c_str());
+    USB_SERIAL_PRINTF("WiFi Channel: %d\n",WiFi.channel());
+  }
+}
+
+bool pairWithMako()
+{
+  if (ESPNowActive && !isPairedWithMako)
+  {
+    M5.Lcd.fillScreen(TFT_BLACK);
+    M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
+    M5.Lcd.setCursor(0,0);
+    const int pairAttempts = 5;
+    isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
+
+    if (isPairedWithMako)
+    {
+      // send message to tiger to give first target
+      publishToMakoTestMessage("Conn Ok");
+    }
+  }
+
+  return isPairedWithMako;
+}
+
+// callback when data is sent from Master to Peer
+void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+  if (status == ESP_NOW_SEND_SUCCESS)
+  {
+    ESPNowMessagesDelivered++;
+  }
+  else
+  {
+    ESPNowMessagesFailedToDeliver++;
+  }
+}
+
+// callback when data is recv from Master
+void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
+{
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  USB_SERIAL_PRINTF("Last Packet Recv from: %s\n",macStr);
+  USB_SERIAL_PRINTF("Last Packet Recv 1st Byte: '%c'\n",*data);
+  USB_SERIAL_PRINTF("Last Packet Recv Length: %d\n",data_len);
+  USB_SERIAL_PRINTLN((char*)data);
+
+  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
+}
+
+bool TeardownESPNow()
+{
+  bool result = false;
+
+  if (enableESPNow && ESPNowActive)
+  {
+    WiFi.disconnect();
+    ESPNowActive = false;
+    result = true;
+  }
+  
+  return result;
+}
+
 // Scan for peers in AP mode
 bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const bool suppressPeerFoundMsg)
 {
@@ -1468,22 +1395,17 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, co
   // reset on each scan 
   memset(&peer, 0, sizeof(peer));
 
-  if (writeLogToSerial)
-    USB_SERIAL.println("");
+  USB_SERIAL_PRINTLN("");
 
   if (scanResults == 0) 
   {   
-    if (writeLogToSerial)
-      USB_SERIAL.println("No WiFi devices in AP Mode found");
+    USB_SERIAL_PRINTLN("No WiFi devices in AP Mode found");
 
     peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
   } 
   else 
   {
-    if (writeLogToSerial)
-    {
-      USB_SERIAL.print("Found "); USB_SERIAL.print(scanResults); USB_SERIAL.println(" devices ");
-    }
+    USB_SERIAL_PRINT("Found "); USB_SERIAL_PRINT(scanResults); USB_SERIAL_PRINTLN(" devices ");
     
     for (int i = 0; i < scanResults; ++i) 
     {
@@ -1492,15 +1414,15 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, co
       int32_t RSSI = WiFi.RSSI(i);
       String BSSIDstr = WiFi.BSSIDstr(i);
 
-      if (writeLogToSerial && ESPNOW_PRINTSCANRESULTS) 
+      if (ESPNOW_PRINTSCANRESULTS) 
       {
-        USB_SERIAL.print(i + 1);
-        USB_SERIAL.print(": ");
-        USB_SERIAL.print(SSID);
-        USB_SERIAL.print(" (");
-        USB_SERIAL.print(RSSI);
-        USB_SERIAL.print(")");
-        USB_SERIAL.println("");
+        USB_SERIAL_PRINT(i + 1);
+        USB_SERIAL_PRINT(": ");
+        USB_SERIAL_PRINT(SSID);
+        USB_SERIAL_PRINT(" (");
+        USB_SERIAL_PRINT(RSSI);
+        USB_SERIAL_PRINT(")");
+        USB_SERIAL_PRINTLN("");
       }
       
       delay(10);
@@ -1508,12 +1430,9 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, co
       // Check if the current device starts with the peerSSIDPrefix
       if (SSID.indexOf(peerSSIDPrefix) == 0) 
       {
-        if (writeLogToSerial)
-        {
-          // SSID of interest
-          USB_SERIAL.println("Found a peer.");
-          USB_SERIAL.print(i + 1); USB_SERIAL.print(": "); USB_SERIAL.print(SSID); USB_SERIAL.print(" ["); USB_SERIAL.print(BSSIDstr); USB_SERIAL.print("]"); USB_SERIAL.print(" ("); USB_SERIAL.print(RSSI); USB_SERIAL.print(")"); USB_SERIAL.println("");
-        }
+        // SSID of interest
+        USB_SERIAL_PRINTLN("Found a peer.");
+        USB_SERIAL_PRINT(i + 1); USB_SERIAL_PRINT(": "); USB_SERIAL_PRINT(SSID); USB_SERIAL_PRINT(" ["); USB_SERIAL_PRINT(BSSIDstr); USB_SERIAL_PRINT("]"); USB_SERIAL_PRINT(" ("); USB_SERIAL_PRINT(RSSI); USB_SERIAL_PRINT(")"); USB_SERIAL_PRINTLN("");
                 
         // Get BSSID => Mac Address of the Slave
         int mac[6];
@@ -1543,14 +1462,12 @@ bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, co
     if (peerFound)
     {
       M5.Lcd.println("Peer Found");
-      if (writeLogToSerial)
-        USB_SERIAL.println("Peer Found, processing..");
+      USB_SERIAL_PRINTLN("Peer Found, processing..");
     } 
     else 
     {
       M5.Lcd.println("Peer Not Found");
-      if (writeLogToSerial)
-        USB_SERIAL.println("Peer Not Found, trying again.");
+      USB_SERIAL_PRINTLN("Peer Not Found, trying again.");
     }
   }
     
@@ -1605,8 +1522,7 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer)
       ESPNowDeletePeer(peer);
     }
 
-    if (writeLogToSerial)
-      USB_SERIAL.print("Peer Status: ");
+    USB_SERIAL_PRINT("Peer Status: ");
 
     // check if the peer exists
     bool exists = esp_now_is_peer_exist(peer.peer_addr);
@@ -1614,8 +1530,7 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer)
     if (exists)
     {
       // Peer already paired.
-      if (writeLogToSerial)
-        USB_SERIAL.println("Already Paired");
+      USB_SERIAL_PRINTLN("Already Paired");
 
       M5.Lcd.println("Already paired");
       result = true;
@@ -1628,46 +1543,39 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer)
       if (addStatus == ESP_OK)
       {
         // Pair success
-        if (writeLogToSerial)
-          USB_SERIAL.println("Pair success");
+        USB_SERIAL_PRINTLN("Pair success");
         M5.Lcd.println("Pair success");
         result = true;
       }
       else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT)
       {
         // How did we get so far!!
-        if (writeLogToSerial)
-          USB_SERIAL.println("ESPNOW Not Init");
+        USB_SERIAL_PRINTLN("ESPNOW Not Init");
         result = false;
       }
       else if (addStatus == ESP_ERR_ESPNOW_ARG)
       {
-        if (writeLogToSerial)
-            USB_SERIAL.println("Invalid Argument");
+        USB_SERIAL_PRINTLN("Invalid Argument");
         result = false;
       }
       else if (addStatus == ESP_ERR_ESPNOW_FULL)
       {
-        if (writeLogToSerial)
-            USB_SERIAL.println("Peer list full");
+        USB_SERIAL_PRINTLN("Peer list full");
         result = false;
       }
       else if (addStatus == ESP_ERR_ESPNOW_NO_MEM)
       {
-        if (writeLogToSerial)
-          USB_SERIAL.println("Out of memory");
+        USB_SERIAL_PRINTLN("Out of memory");
         result = false;
       }
       else if (addStatus == ESP_ERR_ESPNOW_EXIST)
       {
-        if (writeLogToSerial)
-          USB_SERIAL.println("Peer Exists");
+        USB_SERIAL_PRINTLN("Peer Exists");
         result = true;
       }
       else
       {
-        if (writeLogToSerial)
-          USB_SERIAL.println("Not sure what happened");
+        USB_SERIAL_PRINTLN("Not sure what happened");
         result = false;
       }
     }
@@ -1675,8 +1583,7 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer)
   else
   {
     // No peer found to process
-    if (writeLogToSerial)
-      USB_SERIAL.println("No Peer found to process");
+    USB_SERIAL_PRINTLN("No Peer found to process");
 
     M5.Lcd.println("No Peer found to process");
     result = false;
@@ -1691,31 +1598,60 @@ void ESPNowDeletePeer(esp_now_peer_info_t& peer)
   {
     esp_err_t delStatus = esp_now_del_peer(peer.peer_addr);
 
-    if (writeLogToSerial)
+    USB_SERIAL_PRINT("Peer Delete Status: ");
+    if (delStatus == ESP_OK)
     {
-      USB_SERIAL.print("Peer Delete Status: ");
-      if (delStatus == ESP_OK)
-      {
-        // Delete success
-        USB_SERIAL.println("ESPNowDeletePeer::Success");
-      }
-      else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT)
-      {
-        // How did we get so far!!
-        USB_SERIAL.println("ESPNowDeletePeer::ESPNOW Not Init");
-      }
-      else if (delStatus == ESP_ERR_ESPNOW_ARG)
-      {
-        USB_SERIAL.println("ESPNowDeletePeer::Invalid Argument");
-      }
-      else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND)
-      {
-        USB_SERIAL.println("ESPNowDeletePeer::Peer not found.");
-      }
-      else
-      {
-        USB_SERIAL.println("Not sure what happened");
-      }
+      // Delete success
+      USB_SERIAL_PRINTLN("ESPNowDeletePeer::Success");
+    }
+    else if (delStatus == ESP_ERR_ESPNOW_NOT_INIT)
+    {
+      // How did we get so far!!
+      USB_SERIAL_PRINTLN("ESPNowDeletePeer::ESPNOW Not Init");
+    }
+    else if (delStatus == ESP_ERR_ESPNOW_ARG)
+    {
+      USB_SERIAL_PRINTLN("ESPNowDeletePeer::Invalid Argument");
+    }
+    else if (delStatus == ESP_ERR_ESPNOW_NOT_FOUND)
+    {
+      USB_SERIAL_PRINTLN("ESPNowDeletePeer::Peer not found.");
+    }
+    else
+    {
+      USB_SERIAL_PRINTLN("Not sure what happened");
     }
   }
 }
+
+////////////// TEST FUNCTIONS
+void readAndTestGoProReedSwitches()
+{
+  updateButtonsAndBuzzer();
+
+  bool btnTopPressed = p_primaryButton->pressedFor(15);
+  bool btnSidePressed = p_secondButton->pressedFor(15);
+
+  if (btnTopPressed && btnSidePressed)
+  {
+    sideCount++;
+    topCount++;
+    M5.Lcd.setCursor(5, 5);
+    M5.Lcd.printf("TOP+SIDE %d %d", topCount, sideCount);
+  }
+  else if (btnTopPressed)
+  {
+    topCount++;
+    M5.Lcd.setCursor(5, 5);
+    M5.Lcd.printf("TOP %d", topCount);
+  }
+  else if (btnSidePressed)
+  {
+    sideCount++;
+    M5.Lcd.setCursor(5, 5);
+    M5.Lcd.printf("SIDE %d", sideCount);
+  }
+}
+
+#define BUILD_INCLUDE_MAIN_DISPLAY_CODE
+#include "main_display_code.cpp"
