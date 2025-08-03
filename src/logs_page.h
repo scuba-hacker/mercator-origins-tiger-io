@@ -132,7 +132,6 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
                 <option value="ZoomMap">Zoom Map</option>
                 <option value="ota-off">OTA Off</option>
                 <option value="reboot">Reboot</option>
-                <option value="restart">Restart</option>
             </select>
             <button onclick="sendDropdownMessage()">Send</button>
         </div>

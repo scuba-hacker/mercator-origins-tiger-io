@@ -109,39 +109,39 @@ void resetCurrentTarget()
 {
   refreshTargetShown = true;
   M5.Lcd.fillScreen(BLACK);
-  mode_ = 5;
+  display_mode = DISPLAY_5_CURRENT_TARGET;
 }
 
 void resetMap()
 {
   mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-  mode_ = 6;
+  display_mode = DISPLAY_6_MAP;
 }
 
 void resetClock()
 {
   M5.Lcd.fillScreen(BLACK);
-  mode_ = 3; // change back to 3
+  display_mode = DISPLAY_3_CLOCK;
 }
 
-bool cycleDisplays(bool refreshCurrentDisplay, int setDisplayTo)
+bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
 {
     bool changeMade = true;
 
-    if (setDisplayTo > 0)
+    if (setDisplayTo != DISPLAY_0_UNDEFINED)
     {
-      mode_ = setDisplayTo;
+      display_mode = setDisplayTo;
       refreshCurrentDisplay = true;
     }
 
     dumpHeapUsage("cycleDisplays(): ");
     if (refreshCurrentDisplay)
     {
-      if (mode_ == 3)
+      if (display_mode == DISPLAY_3_CLOCK)
         resetClock();
-      else if (mode_ == 5)
+      else if (display_mode == DISPLAY_5_CURRENT_TARGET)
         resetCurrentTarget();
-      else if (mode_ == 6)
+      else if (display_mode == DISPLAY_6_MAP)
         if (mapScreen.get())    // OTA enabling has to delete the map screen
           resetMap();
         else
@@ -154,16 +154,16 @@ bool cycleDisplays(bool refreshCurrentDisplay, int setDisplayTo)
     }
     else
     {
-      if (mode_ == 3) // clock mode, next is show current target
+      if (display_mode == DISPLAY_3_CLOCK) // clock mode, next is show current target
         resetCurrentTarget();
-      else if (mode_ == 5)     // show current target, next is map
+      else if (display_mode == DISPLAY_5_CURRENT_TARGET)     // show current target, next is map
       {
         if (mapScreen.get())    // OTA enabling has to delete the map screen
           resetMap();
         else
           resetClock();   // OTA enabled, go back to clock
       }
-      else if (mode_ == 6)     // show map, next is clock
+      else if (display_mode == DISPLAY_6_MAP)     // show map, next is clock
         resetClock();
       else
       {
@@ -183,9 +183,10 @@ void drawDisplay()
   }
   
   // draw display
-  if ( mode_ == 6) { drawMapDisplay();}
-  if ( mode_ == 5) { drawCurrentTargetTempDisplay();}
-  if ( mode_ == 3 ){ drawClockDisplay();}   // hh,mm,ss, optional dd mm
+  if ( display_mode == DISPLAY_6_MAP)                   { drawMapDisplay();}
+  if ( display_mode == DISPLAY_5_CURRENT_TARGET)        { drawCurrentTargetDisplay();}
+  if ( display_mode == DISPLAY_7_POD_CONTROLS_ENABLED)  { drawPodControlsEnabledDisplay();}
+  if ( display_mode == DISPLAY_3_CLOCK)                 { drawClockDisplay();}
 }
 
 void drawMapDisplay()
@@ -193,7 +194,22 @@ void drawMapDisplay()
   // do nothing
 }
 
-void drawCurrentTargetTempDisplay()
+void drawPodControlsEnabledDisplay()
+{
+   M5.Lcd.fillScreen(TFT_BLACK);
+   M5.Lcd.setCursor(0,0);
+   M5.Lcd.setTextSize(3);
+   M5.Lcd.println("Pod\n\Control\nEnabled\n");
+   // synchronous delay ok here - this is a development tool only - in case gets uploaded that makes M5 buttons primary
+   // then switch to clock
+   delay(5000);
+   M5.Lcd.fillScreen(TFT_BLACK);
+
+   display_mode == DISPLAY_3_CLOCK;
+   drawDisplay();
+}
+
+void drawCurrentTargetDisplay()
 {
   if (refreshTargetShown)
   {

@@ -275,7 +275,7 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   else if (d=="ZoomMap" || d=="zoommap")
   {
     USB_SERIAL_PRINTLN("Zoom map requested via WebSerial command");
-    cycleDisplays(true, 6); // set to map screen
+    cycleDisplays(true, DISPLAY_6_MAP); // set to map screen
 
     if (mapScreen.get()) {
       mapScreen->cycleZoom();
@@ -361,7 +361,7 @@ void handleOTAShutdown() {
         WiFi.mode(WIFI_OFF);
         Serial.println("WiFi disconnected and turned off");
         
-        cycleDisplays(true, 3); // Go to clock display
+        cycleDisplays(true, DISPLAY_3_CLOCK); // Go to clock display
         Serial.println("Display reset to clock mode");
         
         Serial.println("OTA mode disabled - normal operation resumed");

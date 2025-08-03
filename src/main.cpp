@@ -1,3 +1,15 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+                                            // true means use the reeds meaning it must be installed into the pod.
+                                            // If set to false when Tiger is in the pod, activate a reed switch to make
+                                            // reeds primary so that OTA can be done with fixed code.  
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #include <Arduino.h>
 
 #include <M5StickCPlus.h>
@@ -32,7 +44,6 @@ AsyncElegantOtaClass AsyncElegantOTA;
 bool writeLogToSerial=true;
 bool testPreCannedLatLong=false;       // test that animates the diver sprite through slow movements across the lake.
 bool testGPSTimezone=true;           // test GPS timezone detection with simulated coordinates
-bool goProButtonsPrimaryControl = false;
 
 bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
 
@@ -67,12 +78,11 @@ bool ESPNowActive = false;
 const int SCREEN_LENGTH = 240;
 const int SCREEN_WIDTH = 135;
 
-const uint8_t REED_GOPRO_TOP_GPIO=25;
-const uint8_t REED_GOPRO_SIDE_GPIO=0;
-const uint8_t UNUSED_GPIO_36_PIN=36;
-const uint8_t M5_POWER_SWITCH_PIN=255;
+const uint8_t  REED_GOPRO_TOP_GPIO=25;
+const uint8_t  REED_GOPRO_SIDE_GPIO=0;
+const uint8_t  UNUSED_GPIO_36_PIN=36;
 const uint32_t MERCATOR_DEBOUNCE_MS=100;
-const uint8_t LEAK_DETECTOR_GPIO=26;
+const uint8_t  LEAK_DETECTOR_GPIO=26;
 
 const uint8_t M5_BUTTON_A_PIN = BUTTON_A_PIN;
 const uint8_t M5_BUTTON_B_PIN = BUTTON_B_PIN;
@@ -81,6 +91,8 @@ Button ReedSwitchGoProTop = Button(REED_GOPRO_TOP_GPIO, true, MERCATOR_DEBOUNCE_
 Button ReedSwitchGoProSide = Button(REED_GOPRO_SIDE_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 Button LeakDetectorSwitch = Button(LEAK_DETECTOR_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount = 0, topCount = 0;
+
+void setPrimaryControls(const bool useReedSwitches);
 
 bool isTopReedClosed() { // Direct GPIO Read Bypass button press code
   return digitalRead(REED_GOPRO_TOP_GPIO) == false;
@@ -104,7 +116,6 @@ bool isLeakDetected() { // Direct GPIO Read Bypass button press code
 
 bool topReedActiveAtStartup = false;
 bool sideReedActiveAtStartup = false;
-
   
 bool recoveryScreenShown = false;
 
@@ -148,7 +159,16 @@ RTC_DateTypeDef RTC_DateStruct;
 
 const char* leakAlarmMsg = "\nWATER\n\nLEAK\n\nALARM";
 
-int mode_ = 3; // clock
+enum e_display_modes 
+{
+  DISPLAY_0_UNDEFINED,
+  DISPLAY_3_CLOCK, 
+  DISPLAY_6_MAP,
+  DISPLAY_5_CURRENT_TARGET,
+  DISPLAY_7_POD_CONTROLS_ENABLED
+};
+
+e_display_modes display_mode = DISPLAY_3_CLOCK;
 
 const int defaultBrightness = 100;
 
@@ -169,16 +189,17 @@ void initialiseRTCfromNTP();
 bool detectTimezoneFromIP(long& timezoneOffset);
 bool detectTimezoneFromGPS(double lat, double lon);
 bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset);
-bool cycleDisplays(bool refreshCurrentDisplay = false, int setDisplayTo = 0);
+bool cycleDisplays(bool refreshCurrentDisplay = false, e_display_modes setDisplayTo = DISPLAY_0_UNDEFINED);
 bool checkReedSwitches();
 void shutdownIfUSBPowerOff();
 void publishToMakoTestMessage(const char* testMessage);
 void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
 void publishToMakoLeakDetected();
 void drawClockDisplay();
-void drawCurrentTargetTempDisplay();
+void drawCurrentTargetDisplay();
 void drawDisplay();
 void drawMapDisplay();
+void drawPodControlsEnabledDisplay();
 void getTime(char* time);
 void drawDigits(int h1, int h2, int i1, int i2, int s1, int s2);
 void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2);
@@ -310,7 +331,27 @@ void setup()
     M5.Lcd.println("Created msg queue");
   }
 
-  if (goProButtonsPrimaryControl)
+  setPrimaryControls(reedSwitchesPrimaryControl);
+
+  M5.Lcd.setTextSize(2);
+
+  initialiseRTCfromNTP();
+
+  // override clock screen to be test for target received from espnow
+  display_mode = DISPLAY_3_CLOCK;
+
+  if (enableESPNow && msgsReceivedQueue)
+  {
+    configAndStartUpESPNow();
+    // defer pairing with mako for sending messages to mako until first message received from mako.
+  }
+
+  dumpHeapUsage("Setup(): end ");
+}
+
+void setPrimaryControls(const bool useReedSwitches)
+{
+  if (useReedSwitches)
   {
     p_primaryButton = &ReedSwitchGoProTop;
     p_secondButton = &ReedSwitchGoProSide;
@@ -320,21 +361,6 @@ void setup()
     p_primaryButton = &M5.BtnA;
     p_secondButton = &M5.BtnB;
   }
-
-  M5.Lcd.setTextSize(2);
-
-  initialiseRTCfromNTP();
-
-  // override clock screen to be test for target received from espnow
-  mode_ = 3;
-
-  if (enableESPNow && msgsReceivedQueue)
-  {
-    configAndStartUpESPNow();
-    // defer pairing with mako for sending messages to mako until first message received from mako.
-  }
-
-  dumpHeapUsage("Setup(): end ");
 }
 
 bool checkReedSwitches()
@@ -359,6 +385,23 @@ bool checkReedSwitches()
 
   const uint32_t SECOND_BUTTON_TOGGLE_MAP_FEATURES_PRESS = 1000;        // Map display only
   const uint32_t SECOND_BUTTON_CYCLE_MAP_ZOOM_LEVEL_PRESS = 100;        // Map display only 
+
+  if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
+  {
+    // get out of jail...
+    // If the code is uploaded to Tiger in the pod with reedSwitchesPrimaryControl set to true (ie from being tested on the bench outside the pod, or
+    // another M5 stick as a test device), then the reeds don't work and there is no way to force an OTA to get this corrected.
+    // This is a special case where closing either reed switch when in ButtonsPrimary mode switches to the reed switches as primary
+    // so that the code can be re-uploaded with the primaries set back to the reeds.
+    // Without this you have to open the GoPro case and physically upload code to Tiger using USB-C. Not nice as the pod needs dismantling to do this!
+    reedSwitchesPrimaryControl = true;
+    setPrimaryControls(reedSwitchesPrimaryControl);
+    drawPodControlsEnabledDisplay();
+ 
+    // could also send a message to Mako here to make sure that he is also in go pro button and not in M5 Button mode.
+    changeMade = true;
+    return changeMade;
+  }
 
   // Check for 20-second press to simulate leak (TEST MODE)
   if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_SIMULATE_LEAK_PRESS) && !simulatedLeakActive)
@@ -440,7 +483,7 @@ bool checkReedSwitches()
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;
 
-    if (mode_ == 6)    // toggle showing all features on the map
+    if (display_mode == DISPLAY_6_MAP)    // toggle showing all features on the map
     {
       mapScreen->toggleDrawAllFeatures();
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
@@ -454,7 +497,7 @@ bool checkReedSwitches()
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;
 
-    if (mode_ == 6) // map mode - cycle zoom
+    if (display_mode == DISPLAY_6_MAP) // map mode - cycle zoom
     {
       mapScreen->cycleZoom(); changeMade = true;
       mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
@@ -551,6 +594,8 @@ void updateButtonsAndBuzzer()
 }
 
 /////////////// UTILITY FUNCTIONS
+// This is needed for when testing on the bench where a test M5 
+// Stick could be used which has an internal battery still fitted.
 void shutdownIfUSBPowerOff()
 {
   if (M5.Axp.GetVBusVoltage() < minimumUSBVoltage)

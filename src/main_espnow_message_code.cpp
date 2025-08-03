@@ -75,9 +75,9 @@ void processIncomingESPNowMessages()
             heading = static_cast<int>((old_heading + 5)) % 360;
           }
 
-          if (mode_ == 6) // map on screen
+          if (display_mode == 6) // map on screen
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-          else if (mode_ == 5 && refreshTargetShown)
+          else if (display_mode == 5 && refreshTargetShown)
             resetCurrentTarget();
         }
         default:
@@ -94,10 +94,25 @@ void publishToMakoTestMessage(const char* testMessage)
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
   {
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"T%s",testMessage);
-    USB_SERIAL_PRINTLN("Sending ESP T msg to Mako...");
+    USB_SERIAL_PRINTLN("Sending ESP T msg to Mako... Test Message");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
 
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+}
+
+void publishToMakoForceGoProButtonsUsage()
+{
+  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+  {
+    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"F");
+    USB_SERIAL_PRINTLN("Sending ESP F msg to Mako... Force use go pro buttons to primary controls (disable M5 Buttons if set to primary)");
+    USB_SERIAL_PRINTLN(mako_espnow_buffer);
+    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+  else
+  {
+    USB_SERIAL_PRINTLN("ESPNow inactive - not sending ESP F msg to Mako...");
   }
 }
 
@@ -106,7 +121,7 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
   {
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"R%c%lu       ",(topReed ? 'T' : 'B'),ms);
-    USB_SERIAL_PRINTLN("Sending ESP R msg to Mako...");
+    USB_SERIAL_PRINTLN("Sending ESP R msg to Mako... Reed Activation");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
   }
@@ -128,7 +143,7 @@ void publishToMakoLeakDetected()
     if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
     {
       snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"L");
-      USB_SERIAL_PRINTLN("Sending ESP L msg to Mako...");
+      USB_SERIAL_PRINTLN("Sending ESP L msg to Mako... Leak Detected");
       USB_SERIAL_PRINTLN(mako_espnow_buffer);
       ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
     }
