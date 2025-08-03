@@ -6,6 +6,168 @@ extern float cachedAXPTemperature;
 // External reference to leak alarm state
 extern bool leakAlarmCurrentlyShowing;
 
+
+void checkForLeak(const char* msg)
+{
+  // Handle asynchronous leak alarm flash sequence with dual-tone pattern
+  if (leakAlarmInInitialFlash && millis() - leakAlarmFlashTime >= 100) // Flash every 100ms for dual tone timing
+  {
+    leakAlarmFlashTime = millis();
+    
+    if (leakAlarmFlashCycle < MAX_ALARM_BURST_CYCLES) // Still flashing
+    {
+      if (leakAlarmFlashOn) // Currently showing red, switch to orange
+      {
+        M5.Lcd.fillScreen(TFT_ORANGE);
+        M5.Lcd.setTextSize(4);
+        M5.Lcd.setCursor(5, 10);
+        M5.Lcd.setTextColor(TFT_YELLOW, TFT_ORANGE);
+        M5.Lcd.print(leakAlarmMsg);
+        M5.Beep.setBeep(LEAK_ALARM_TONE_2_FREQ, LEAK_ALARM_TONE_2_DURATION);
+        M5.Beep.beep();
+        leakAlarmFlashOn = false;
+      }
+      else // Currently showing orange, switch to red and increment cycle
+      {
+        M5.Lcd.fillScreen(TFT_RED);
+        M5.Lcd.setTextSize(4);
+        M5.Lcd.setCursor(5, 10);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+        M5.Lcd.print(leakAlarmMsg);
+        M5.Beep.setBeep(LEAK_ALARM_TONE_1_FREQ, LEAK_ALARM_TONE_1_DURATION);
+        M5.Beep.beep();
+        leakAlarmFlashOn = true;
+        leakAlarmFlashCycle++;
+      }
+    }
+    else
+    {
+      // Flash sequence complete - hide alarm and set timing for next sequence
+      leakAlarmInInitialFlash = false;
+      leakAlarmCurrentlyShowing = false;
+      M5.Lcd.fillScreen(TFT_BLACK);
+      M5.Lcd.setTextSize(2);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      M5.Beep.mute();
+      
+      // Set timing for next alarm sequence (2 minutes from now)
+      leakAlarmLastShowTime = millis();
+      leakAlarmShowCount = 0;
+    }
+  }
+
+  // Check for new leak detection (real or simulated)
+  if ((isLeakDetected() || simulatedLeakActive) && !leakAlarmActive)
+  {
+    // First time leak detected - activate alarm permanently
+    leakAlarmActive = true;
+    leakAlarmStartTime = millis();
+    leakAlarmCurrentlyShowing = true;
+    leakAlarmShowStartTime = millis();
+    leakAlarmLastShowTime = millis();
+    leakAlarmShowCount = 0;
+    
+    initialiseLeakAlarm(msg);
+    publishToMakoLeakDetected();
+    
+    USB_SERIAL_PRINTLN("LEAK DETECTED - ALARM ACTIVATED PERMANENTLY");
+  }
+  
+  // Handle ongoing alarm behavior (only if alarm is active)
+  if (leakAlarmActive)
+  {
+    // Simple timing: 10-flash sequence every 2 minutes
+    uint32_t timeSinceLastShow = millis() - leakAlarmLastShowTime;
+    
+    // Time to start a new 10-flash sequence?
+    if (timeSinceLastShow >= DURATION_BETWEEN_ALARM_BURSTS && !leakAlarmCurrentlyShowing && !leakAlarmInInitialFlash) // 2 minutes
+    {
+      leakAlarmCurrentlyShowing = true;
+      leakAlarmShowStartTime = millis();
+      initialiseLeakAlarm(msg);
+    }
+  }
+}
+
+void initialiseLeakAlarm(const char* msg)
+{
+  leakAlarmInInitialFlash = true;
+  leakAlarmFlashCycle = 0;
+  leakAlarmFlashTime = millis();
+  leakAlarmFlashOn = true;
+}
+
+void hideLeakAlarm()
+{
+  M5.Beep.mute();
+  M5.Lcd.fillScreen(TFT_BLACK);  // Ensure screen is completely black
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+}
+
+void resetCurrentTarget()
+{
+  refreshTargetShown = true;
+  M5.Lcd.fillScreen(BLACK);
+  mode_ = 5;
+}
+
+void resetMap()
+{
+  mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
+  mode_ = 6;
+}
+
+void resetClock()
+{
+  M5.Lcd.fillScreen(BLACK);
+  mode_ = 3; // change back to 3
+}
+
+bool cycleDisplays(const bool refreshCurrentDisplay)
+{
+    bool changeMade = true;
+
+    if (refreshCurrentDisplay)
+    {
+      if (mode_ == 3)
+        resetClock();
+      else if (mode_ == 5)
+        resetCurrentTarget();
+      else if (mode_ == 6)
+        if (mapScreen.get())    // OTA enabling has to delete the map screen
+          resetMap();
+        else
+          resetClock();   // OTA enabled, go back to clock
+      else
+      {
+        USB_SERIAL_PRINTLN("cycleDisplays Error: invalid mode_");
+        changeMade = false;
+      }
+    }
+    else
+    {
+      if (mode_ == 3) // clock mode, next is show current target
+        resetCurrentTarget();
+      else if (mode_ == 5)     // show current target, next is map
+      {
+        if (mapScreen.get())    // OTA enabling has to delete the map screen
+          resetMap();
+        else
+          resetClock();   // OTA enabled, go back to clock
+      }
+      else if (mode_ == 6)     // show map, next is clock
+        resetClock();
+      else
+      {
+        USB_SERIAL_PRINTLN("cycleDisplays Error: invalid mode_");
+        changeMade = false;
+      }
+    }
+
+    return changeMade;
+}
+
 void drawDisplay()
 {
   // Don't draw normal display if leak alarm is currently showing
@@ -157,5 +319,78 @@ void drawClockDisplay()
   M5.Lcd.printf("%.0fC", cachedAXPTemperature);
 }
 
+  void displayReedActivationIndicators()
+  {
+    int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
+
+    pressedPrimaryButtonX = 110;
+    pressedPrimaryButtonY = 105; 
+
+    pressedSecondButtonX = 5;
+    pressedSecondButtonY = 210;
+      
+    // Update button indicators at the same rate as display (100ms) to prevent overwriting
+    if (millis() - lastButtonIndicatorUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash && !leakAlarmCurrentlyShowing)
+    {
+      lastButtonIndicatorUpdateTime = millis();
+      
+      // Primary button indicator
+      if (primaryButtonIsPressed && millis()-primaryButtonPressedTime > 250)
+      {
+        int seconds = (millis()-primaryButtonPressedTime)/1000;
+        int xPos = pressedPrimaryButtonX;
+        
+        // Move left for double digits to prevent wrapping
+        if (seconds >= 10) {
+          xPos -= 18; // Adjust for character width at size 3
+        }
+        
+        M5.Lcd.setTextSize(3);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+        M5.Lcd.setCursor(xPos, pressedPrimaryButtonY);
+        M5.Lcd.printf("%i", seconds);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+        primaryButtonIndicatorNeedsClearing=true;
+        USB_SERIAL_PRINTF("Primary button indicator: %i seconds\n", seconds);
+      }
+      else
+      {
+        if (primaryButtonIndicatorNeedsClearing)
+        {
+          primaryButtonIndicatorNeedsClearing = false;
+          // Clear both single and double digit positions with black rectangle
+          M5.Lcd.fillRect(pressedPrimaryButtonX-18, pressedPrimaryButtonY, 54, 24, TFT_BLACK);
+        }
+      }
+
+      // Second button indicator
+      if (secondButtonIsPressed && millis()-secondButtonPressedTime > 250)
+      {
+        int seconds = (millis()-secondButtonPressedTime)/1000;
+        int xPos = pressedSecondButtonX;
+        
+        // Move right for double digits since this is on the left side
+        if (seconds >= 10) {
+          xPos += 0; // Keep same position since we have room on the left side
+        }
+        
+        M5.Lcd.setTextSize(3);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+        M5.Lcd.setCursor(xPos, pressedSecondButtonY);
+        M5.Lcd.printf("%i", seconds);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+        secondButtonIndicatorNeedsClearing=true;
+      }
+      else
+      {
+        if (secondButtonIndicatorNeedsClearing)
+        {
+          secondButtonIndicatorNeedsClearing = false;
+          // Clear second button indicator with black rectangle
+          M5.Lcd.fillRect(pressedSecondButtonX, pressedSecondButtonY, 36, 24, TFT_BLACK);
+        }
+      }
+    }
+  }
 
 #endif
