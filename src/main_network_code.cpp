@@ -1,6 +1,8 @@
 
 #ifdef BUILD_INCLUDE_MAIN_NETWORK_CODE
 
+#include "logs_page.h"
+
 ////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// WiFi/Network/OTA Functions
 ////////////////////////////////////////////////////////////////////////
@@ -57,6 +59,27 @@ void disableFeaturesForOTA(bool screenToRed=true)
     mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
   WebSerial.closeAll();   // close all websocket connetions for WebSerial
+  
+  // Critical: Stop ESP-NOW before OTA to prevent queue corruption
+  if (ESPNowActive) {
+    USB_SERIAL_PRINTLN("Stopping ESP-NOW for OTA...");
+    esp_now_deinit();
+    ESPNowActive = false;
+    isPairedWithMako = false;
+  }
+  
+  // Flush and safely handle the message queue
+  if (msgsReceivedQueue) {
+    USB_SERIAL_PRINTLN("Flushing ESP-NOW message queue...");
+    char tempBuffer[256];
+    // Drain any remaining messages
+    while (xQueueReceive(msgsReceivedQueue, tempBuffer, 0) == pdTRUE) {
+      // Just discard the messages
+    }
+  }
+  
+  // Small delay to ensure all operations complete
+  delay(100);
 }
 
 bool systemStartupAndCheckForOTADemand()
@@ -243,6 +266,7 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
 void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
 {
   disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
+  dumpHeapUsage("uploadOTABeginCallback: ");
 }
 
 void uploadOTAProgressCallback(AsyncElegantOtaClass* originator, size_t progress, size_t total) 
@@ -317,6 +341,10 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
       asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
         request->send(200, "text/plain", "To upload firmware use /update");
+      });
+
+      asyncWebServer.on("/logs", HTTP_GET, [](AsyncWebServerRequest * request) {
+        request->send_P(200, "text/html", LOGS_PAGE_HTML);
       });
         
       USB_SERIAL_PRINTLN("setupOTAWebServer: calling AsyncElegantOTA.begin");

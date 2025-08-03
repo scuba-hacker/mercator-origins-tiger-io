@@ -95,6 +95,11 @@ void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 // callback when data is recv from Master
 void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
+  // CRITICAL: Don't process ESP-NOW messages during OTA to prevent queue corruption
+  if (haltAllProcessingDuringOTAUpload || otaActive) {
+    return; // Silently drop messages during OTA
+  }
+  
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
@@ -103,7 +108,8 @@ void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len
   USB_SERIAL_PRINTF("Last Packet Recv Length: %d\n",data_len);
   USB_SERIAL_PRINTLN((char*)data);
 
-  xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
+  if (msgsReceivedQueue && ESPNowActive)
+    xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
 }
 
 bool TeardownESPNow()
@@ -112,9 +118,16 @@ bool TeardownESPNow()
 
   if (enableESPNow && ESPNowActive)
   {
+    USB_SERIAL_PRINTLN("Tearing down ESP-NOW...");
+    
+    // Properly deinitialize ESP-NOW
+    esp_now_deinit();
     WiFi.disconnect();
     ESPNowActive = false;
+    isPairedWithMako = false;
     result = true;
+    
+    USB_SERIAL_PRINTLN("ESP-NOW teardown complete");
   }
   
   return result;

@@ -394,32 +394,24 @@ bool checkReedSwitches()
   // press second button for 5 seconds to attempt WiFi connect and enable OTA
   else if (p_secondButton->wasReleasefor(SECOND_BUTTON_CONNECT_OTA_PRESS))
   { 
-    if (mode_ == 100) // map screen has to be deleted for OTA to be enabled, cannot do this if already in map mode
-    {
-//      cycleDisplays();
-      //if (mapScreen.get())
-      //  mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
-    }
-    else
-    {
-      activationTime = lastSecondButtonPressLasted;
-      reedSwitchTop = false;
+    activationTime = lastSecondButtonPressLasted;
+    reedSwitchTop = false;
 
-      TeardownESPNow();
-      isPairedWithMako = false;
+    TeardownESPNow();
+    isPairedWithMako = false;
 
-      dumpHeapUsage("checkReedSwitches(): begin switch to OTA");
+    dumpHeapUsage("checkReedSwitches(): begin switch to OTA");
 
-      // enable OTA
-      const bool wifiOnly = false;
-      M5.Lcd.fillScreen(TFT_BLACK);
-      const int maxWifiScanAttempts = 3;
-      connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
+    // enable OTA
+    const bool wifiOnly = false;
+    M5.Lcd.fillScreen(TFT_BLACK);
+    const int maxWifiScanAttempts = 3;
+    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
 
-      changeMade = true;
-      const bool refreshCurrentScreen=true;
-      cycleDisplays(refreshCurrentScreen);
-    }
+    changeMade = true;
+    const bool refreshCurrentScreen=true;
+    cycleDisplays(refreshCurrentScreen);
+
     USB_SERIAL_PRINTLN("Enable OTA Mode");
   }
   // press second button for 1 second to toggle all features on the map
