@@ -96,6 +96,21 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
         .timestamp { 
             color: #999; 
         }
+        .ota-banner {
+            background: #ff6b35;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -117,8 +132,13 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
                 <option value="ZoomMap">Zoom Map</option>
                 <option value="ota-off">OTA Off</option>
                 <option value="reboot">Reboot</option>
+                <option value="restart">Restart</option>
             </select>
             <button onclick="sendDropdownMessage()">Send</button>
+        </div>
+        <div id="otaBanner" class="ota-banner" style="display: none;">
+            <strong>OTA MODE SHUTTING DOWN</strong><br>
+            ESP-NOW communications will be restored momentarily...
         </div>
         <div id="console"></div>
         <div id="status" class="status disconnected">Disconnected</div>
@@ -167,9 +187,24 @@ const char LOGS_PAGE_HTML[] PROGMEM = R"rawliteral(
             
             console.textContent += timestampedData;
             
+            // Check for OTA shutdown sequence
+            if (data.includes('OTA mode will be disabled') || data.includes('OTA mode disabled')) {
+                showOtaBanner();
+            }
+            
             if (autoScroll) {
                 console.scrollTop = console.scrollHeight;
             }
+        }
+
+        function showOtaBanner() {
+            const banner = document.getElementById('otaBanner');
+            banner.style.display = 'block';
+            
+            // Hide banner after 10 seconds
+            setTimeout(() => {
+                banner.style.display = 'none';
+            }, 10000);
         }
 
         function clearConsole() {

@@ -4,10 +4,9 @@
 ///////////////////////////////// ESPNow Message Functions
 ////////////////////////////////////////////////////////////////////////
 
-
 void processIncomingESPNowMessages()
 {
- if (msgsReceivedQueue && !otaActive)
+ if (msgsReceivedQueue && !otaActive && ESPNowActive)
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {

@@ -1,7 +1,6 @@
 #pragma once
 
-//#include <Arduino.h>
-#define USE_WEBSERIAL
+//#define USE_WEBSERIAL
 
 #ifdef USE_WEBSERIAL
   #include <WebSerial.h>

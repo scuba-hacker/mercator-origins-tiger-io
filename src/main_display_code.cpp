@@ -338,7 +338,7 @@ void displayReedActivationIndicators()
   int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
 
   pressedPrimaryButtonX = 110;
-  pressedPrimaryButtonY = 105; 
+  pressedPrimaryButtonY = 65; 
 
   pressedSecondButtonX = 5;
   pressedSecondButtonY = 210;

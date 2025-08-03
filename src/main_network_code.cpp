@@ -292,13 +292,85 @@ void webSerialReceiveMessage(uint8_t *data, size_t len){
   }
   else if (d=="ota-off")
   {
-    USB_SERIAL_PRINTLN("OTA off requested via WebSerial command");
-
-    // Turn ota off and re-restablish ESP-Now comms
+    Serial.println("OTA off requested via WebSerial command - will execute in main loop");
+    // Set flag to execute OTA shutdown in main loop, not in callback
+    otaShutdownRequested = true;
+    otaShutdownStartTime = millis();
   }
   else
   {
     USB_SERIAL_PRINTF("Unknown WebSerial command: %s\n", d.c_str());
+  }
+}
+
+void handleOTAShutdown() {
+  static int shutdownStep = 0;
+  uint32_t elapsed = millis() - otaShutdownStartTime;
+  
+  switch (shutdownStep) {
+    case 0: // Initial acknowledgment
+      WebSerial.println("OTA off requested via WebSerial command");
+      Serial.println("OTA off requested via WebSerial command");
+      shutdownStep++;
+      otaShutdownStartTime = millis(); // Reset timer for countdown
+      break;
+      
+    case 1: // 3 seconds
+      if (elapsed >= 0) {
+        WebSerial.println("OTA mode will be disabled in 3 seconds...");
+        Serial.println("OTA mode will be disabled in 3 seconds...");
+        shutdownStep++;
+      }
+      break;
+      
+    case 2: // 2 seconds  
+      if (elapsed >= 1000) {
+        WebSerial.println("OTA mode will be disabled in 2 seconds...");
+        Serial.println("OTA mode will be disabled in 2 seconds...");
+        shutdownStep++;
+      }
+      break;
+      
+    case 3: // 1 second
+      if (elapsed >= 2000) {
+        WebSerial.println("OTA mode will be disabled in 1 second...");
+        Serial.println("OTA mode will be disabled in 1 second...");
+        shutdownStep++;
+      }
+      break;
+      
+    case 4: // Final message and shutdown
+      if (elapsed >= 3000) {
+        WebSerial.println("OTA mode disabled - WebSerial connection will close");
+        Serial.println("OTA mode disabled - WebSerial connection will close");
+        delay(500); // Give time for final message to send
+        
+        // Perform the actual shutdown
+        otaActive = false;
+        haltAllProcessingDuringOTAUpload = false;
+        ESPNowActive = false;
+        isPairedWithMako = false;
+        
+        WebSerial.closeAll();
+        Serial.println("WebSerial connections closed");
+        
+        asyncWebServer.end();
+        Serial.println("Web server stopped");
+        
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        Serial.println("WiFi disconnected and turned off");
+        
+        cycleDisplays(true, 3); // Go to clock display
+        Serial.println("Display reset to clock mode");
+        
+        Serial.println("OTA mode disabled - normal operation resumed");
+        
+        // Reset shutdown state
+        otaShutdownRequested = false;
+        shutdownStep = 0;
+      }
+      break;
   }
 }
 

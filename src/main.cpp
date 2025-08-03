@@ -240,6 +240,7 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const 
 bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
+void handleOTAShutdown();
 
 uint8_t redLEDStatus = HIGH;  // HIGH == off, LOW == on
 
@@ -262,6 +263,10 @@ void initRedLed() {
 bool haltAllProcessingDuringOTAUpload = false;
 bool forceLoopInitialOTAEnablement = false;
 const char* buildTimestamp = __DATE__ " " __TIME__;
+
+// OTA shutdown variables
+bool otaShutdownRequested = false;
+uint32_t otaShutdownStartTime = 0;
 
 void dumpHeapUsage(const char* msg)
 {  
@@ -345,6 +350,7 @@ bool checkReedSwitches()
 
   // Check for 20-second press to simulate leak (TEST MODE)  
   const uint32_t PRIMARY_BUTTON_SIMULATE_LEAK_PRESS = 20000;            // Any display
+  const uint32_t PRIMARY_BUTTON_ESPNOW_ON_PRESS = 5000;                 // Any display
   const uint32_t PRIMARY_BUTTON_CYCLE_DISPLAY_PRESS = 100;              // Any display
 
   const uint32_t SECOND_BUTTON_CANCEL_SIMULATE_LEAK_PRESS = 15000;      // Any display
@@ -361,6 +367,22 @@ bool checkReedSwitches()
     USB_SERIAL_PRINTLN("*** LEAK SIMULATION ACTIVATED ***");
     changeMade = true;
   }
+  // press second button for 5 seconds turn on ESP Now if it is currently off
+  else if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_ESPNOW_ON_PRESS))
+  {
+    if (!ESPNowActive)
+    {
+      if (!otaActive)
+        configAndStartUpESPNow();
+      else 
+        USB_SERIAL_PRINTLN("Cannot enable ESP Now when OTA is active");
+    }
+    else
+    {
+      USB_SERIAL_PRINTLN("ESP Now already enabled");
+    }
+  }
+
   // Normal button press for display cycling (but only if not showing indicators)
   else if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_CYCLE_DISPLAY_PRESS) && !primaryButtonIndicatorNeedsClearing) // show next display
   {
@@ -459,6 +481,12 @@ void loop()
   if (cutShortLoopOnOTADemand())
     return;
   ///////////////////////////////////////////////////////////////////////////////////////
+
+  // Handle OTA shutdown request from WebSerial command
+  if (otaShutdownRequested) {
+    handleOTAShutdown();
+    return; // Exit loop during shutdown
+  }
 
   processIncomingESPNowMessages();
 
