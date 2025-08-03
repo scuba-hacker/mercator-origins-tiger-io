@@ -314,84 +314,90 @@ void drawClockDisplay()
     M5.Lcd.printf("Paired-");
   }
   
+  // Update AXP temperature every 1 second asynchronously
+  if (millis() - lastAXPTempUpdateTime >= AXP_TEMP_UPDATE_INTERVAL)
+  {
+    lastAXPTempUpdateTime = millis();
+    cachedAXPTemperature = M5.Axp.GetTempInAXP192();
+  }
+  
   // Position temperature to the left of seconds, aligned with first digit of minutes
   M5.Lcd.setCursor(5, 130);  // x=5 (left of seconds at x=50), y=120 (same as seconds)
   M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
   M5.Lcd.printf("%.0fC", cachedAXPTemperature);
 }
 
-  void displayReedActivationIndicators()
+void displayReedActivationIndicators()
+{
+  int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
+
+  pressedPrimaryButtonX = 110;
+  pressedPrimaryButtonY = 105; 
+
+  pressedSecondButtonX = 5;
+  pressedSecondButtonY = 210;
+    
+  // Update button indicators at the same rate as display (100ms) to prevent overwriting
+  if (millis() - lastButtonIndicatorUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash && !leakAlarmCurrentlyShowing)
   {
-    int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
-
-    pressedPrimaryButtonX = 110;
-    pressedPrimaryButtonY = 105; 
-
-    pressedSecondButtonX = 5;
-    pressedSecondButtonY = 210;
-      
-    // Update button indicators at the same rate as display (100ms) to prevent overwriting
-    if (millis() - lastButtonIndicatorUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash && !leakAlarmCurrentlyShowing)
+    lastButtonIndicatorUpdateTime = millis();
+    
+    // Primary button indicator
+    if (primaryButtonIsPressed && millis()-primaryButtonPressedTime > 250)
     {
-      lastButtonIndicatorUpdateTime = millis();
+      int seconds = (millis()-primaryButtonPressedTime)/1000;
+      int xPos = pressedPrimaryButtonX;
       
-      // Primary button indicator
-      if (primaryButtonIsPressed && millis()-primaryButtonPressedTime > 250)
-      {
-        int seconds = (millis()-primaryButtonPressedTime)/1000;
-        int xPos = pressedPrimaryButtonX;
-        
-        // Move left for double digits to prevent wrapping
-        if (seconds >= 10) {
-          xPos -= 18; // Adjust for character width at size 3
-        }
-        
-        M5.Lcd.setTextSize(3);
-        M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
-        M5.Lcd.setCursor(xPos, pressedPrimaryButtonY);
-        M5.Lcd.printf("%i", seconds);
-        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-        primaryButtonIndicatorNeedsClearing=true;
-        USB_SERIAL_PRINTF("Primary button indicator: %i seconds\n", seconds);
+      // Move left for double digits to prevent wrapping
+      if (seconds >= 10) {
+        xPos -= 18; // Adjust for character width at size 3
       }
-      else
+      
+      M5.Lcd.setTextSize(3);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_RED);
+      M5.Lcd.setCursor(xPos, pressedPrimaryButtonY);
+      M5.Lcd.printf("%i", seconds);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      primaryButtonIndicatorNeedsClearing=true;
+    }
+    else
+    {
+      if (primaryButtonIndicatorNeedsClearing)
       {
-        if (primaryButtonIndicatorNeedsClearing)
-        {
-          primaryButtonIndicatorNeedsClearing = false;
-          // Clear both single and double digit positions with black rectangle
-          M5.Lcd.fillRect(pressedPrimaryButtonX-18, pressedPrimaryButtonY, 54, 24, TFT_BLACK);
-        }
+        primaryButtonIndicatorNeedsClearing = false;
+        // Clear both single and double digit positions with black rectangle
+        M5.Lcd.fillRect(pressedPrimaryButtonX-18, pressedPrimaryButtonY, 54, 24, TFT_BLACK);
       }
+    }
 
-      // Second button indicator
-      if (secondButtonIsPressed && millis()-secondButtonPressedTime > 250)
-      {
-        int seconds = (millis()-secondButtonPressedTime)/1000;
-        int xPos = pressedSecondButtonX;
-        
-        // Move right for double digits since this is on the left side
-        if (seconds >= 10) {
-          xPos += 0; // Keep same position since we have room on the left side
-        }
-        
-        M5.Lcd.setTextSize(3);
-        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
-        M5.Lcd.setCursor(xPos, pressedSecondButtonY);
-        M5.Lcd.printf("%i", seconds);
-        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-        secondButtonIndicatorNeedsClearing=true;
+    // Second button indicator
+    if (secondButtonIsPressed && millis()-secondButtonPressedTime > 250)
+    {
+      int seconds = (millis()-secondButtonPressedTime)/1000;
+      int xPos = pressedSecondButtonX;
+      
+      // Move right for double digits since this is on the left side
+      if (seconds >= 10) {
+        xPos += 0; // Keep same position since we have room on the left side
       }
-      else
+      
+      M5.Lcd.setTextSize(3);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+      M5.Lcd.setCursor(xPos, pressedSecondButtonY);
+      M5.Lcd.printf("%i", seconds);
+      M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+      secondButtonIndicatorNeedsClearing=true;
+    }
+    else
+    {
+      if (secondButtonIndicatorNeedsClearing)
       {
-        if (secondButtonIndicatorNeedsClearing)
-        {
-          secondButtonIndicatorNeedsClearing = false;
-          // Clear second button indicator with black rectangle
-          M5.Lcd.fillRect(pressedSecondButtonX, pressedSecondButtonY, 36, 24, TFT_BLACK);
-        }
+        secondButtonIndicatorNeedsClearing = false;
+        // Clear second button indicator with black rectangle
+        M5.Lcd.fillRect(pressedSecondButtonX, pressedSecondButtonY, 36, 24, TFT_BLACK);
       }
     }
   }
+}
 
 #endif

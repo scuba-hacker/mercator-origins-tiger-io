@@ -479,13 +479,6 @@ void loop()
     drawDisplay();
   }
   
-  // Update AXP temperature every 1 second asynchronously
-  if (millis() - lastAXPTempUpdateTime >= AXP_TEMP_UPDATE_INTERVAL)
-  {
-    lastAXPTempUpdateTime = millis();
-    cachedAXPTemperature = M5.Axp.GetTempInAXP192();
-  }
-  
   checkForLeak(leakAlarmMsg);
   
   checkReedSwitches();
