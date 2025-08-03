@@ -86,8 +86,8 @@ bool ESPNowActive = false;
 const int SCREEN_LENGTH = 240;
 const int SCREEN_WIDTH = 135;
 
-const uint8_t  REED_GOPRO_TOP_GPIO=25;
-const uint8_t  REED_GOPRO_SIDE_GPIO=0;
+const uint8_t  REED_GOPRO_UPPER_GPIO=25;
+const uint8_t  REED_GOPRO_LOWER_GPIO=0;
 const uint8_t  UNUSED_GPIO_36_PIN=36;
 const uint32_t MERCATOR_DEBOUNCE_MS=100;
 const uint8_t  LEAK_DETECTOR_GPIO=26;
@@ -95,19 +95,19 @@ const uint8_t  LEAK_DETECTOR_GPIO=26;
 const uint8_t M5_BUTTON_A_PIN = BUTTON_A_PIN;
 const uint8_t M5_BUTTON_B_PIN = BUTTON_B_PIN;
 
-Button ReedSwitchGoProTop = Button(REED_GOPRO_TOP_GPIO, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
-Button ReedSwitchGoProSide = Button(REED_GOPRO_SIDE_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
+Button ReedSwitchGoProTop = Button(REED_GOPRO_UPPER_GPIO, true, MERCATOR_DEBOUNCE_MS);    // from utility/Button.h for M5 Stick C Plus
+Button ReedSwitchGoProSide = Button(REED_GOPRO_LOWER_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 Button LeakDetectorSwitch = Button(LEAK_DETECTOR_GPIO, true, MERCATOR_DEBOUNCE_MS); // from utility/Button.h for M5 Stick C Plus
 uint16_t sideCount = 0, topCount = 0;
 
 void setPrimaryControls(const bool useReedSwitches);
 
 bool isTopReedClosed() { // Direct GPIO Read Bypass button press code
-  return digitalRead(REED_GOPRO_TOP_GPIO) == false;
+  return digitalRead(REED_GOPRO_UPPER_GPIO) == false;
 }
 
 bool isSideReedClosed() { // Direct GPIO Read Bypass button press code
-  return digitalRead(REED_GOPRO_SIDE_GPIO) == false;
+  return digitalRead(REED_GOPRO_LOWER_GPIO) == false;
 }
 
 bool isButtonAPressed() { // Direct GPIO Read Bypass button press code
@@ -397,16 +397,16 @@ bool checkReedSwitches()
   displayReedActivationIndicators();
 
   // Check for 20-second press to simulate leak (TEST MODE)  
-  const uint32_t PRIMARY_BUTTON_SIMULATE_LEAK_PRESS = 20000;            // Any display
-  const uint32_t PRIMARY_BUTTON_ESPNOW_ON_PRESS = 5000;                 // Any display
-  const uint32_t PRIMARY_BUTTON_CYCLE_DISPLAY_PRESS = 100;              // Any display
+  const uint32_t UPPER_REED_SIMULATE_LEAK_ACTIVATION = 20000;             // Any display - TOP-RIGHT - 20s simulate leak
+  const uint32_t UPPER_REED_ESPNOW_ON_ACTIVATION = 5000;                  // Any display - TOP-RIGHT - 5s  enable ESP Now if off
+  const uint32_t UPPER_REED_CYCLE_DISPLAY_ACTIVATION = 100;               // Any display - TOP-RIGHT - tap to cycle the display
 
-  const uint32_t SECOND_BUTTON_CANCEL_SIMULATE_LEAK_PRESS = 15000;      // Any display
-  const uint32_t SECOND_BUTTON_REBOOT_PRESS = 10000;                    // Any display
-  const uint32_t SECOND_BUTTON_CONNECT_OTA_PRESS = 5000;                // Any display except map
+  const uint32_t LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION = 15000;      // Any display - BOT-LEFT - 15s cancel leak simulation
+  const uint32_t LOWER_REED_REBOOT_ACTIVATION = 10000;                    // Any display - BOT-LEFT - 10s reboot
+  const uint32_t LOWER_REED_CONNECT_OTA_ACTIVATION = 5000;                // Any display - BOT-LEFT - 5s  enable OTA server
 
-  const uint32_t SECOND_BUTTON_TOGGLE_MAP_FEATURES_PRESS = 1000;        // Map display only
-  const uint32_t SECOND_BUTTON_CYCLE_MAP_ZOOM_LEVEL_PRESS = 100;        // Map display only 
+  const uint32_t LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION = 1000;        // Map only    - BOT-LEFT - Toggle show all features
+  const uint32_t LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION = 100;        // Map only    - BOT-LEFT - Cycle map zoom level
 
   if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
   {
@@ -419,14 +419,14 @@ bool checkReedSwitches()
   }
 
   // Check for 20-second press to simulate leak (TEST MODE)
-  if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_SIMULATE_LEAK_PRESS) && !simulatedLeakActive)
+  if (p_primaryButton->wasReleasefor(UPPER_REED_SIMULATE_LEAK_ACTIVATION) && !simulatedLeakActive)
   {
     simulatedLeakActive = true;
     USB_SERIAL_PRINTLN("*** LEAK SIMULATION ACTIVATED ***");
     changeMade = true;
   }
   // press second button for 5 seconds turn on ESP Now if it is currently off
-  else if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_ESPNOW_ON_PRESS))
+  else if (p_primaryButton->wasReleasefor(UPPER_REED_ESPNOW_ON_ACTIVATION))
   {
     if (!ESPNowActive)
     {
@@ -440,9 +440,8 @@ bool checkReedSwitches()
       USB_SERIAL_PRINTLN("ESP Now already enabled");
     }
   }
-
   // Normal button press for display cycling (but only if not showing indicators)
-  else if (p_primaryButton->wasReleasefor(PRIMARY_BUTTON_CYCLE_DISPLAY_PRESS) && !primaryButtonIndicatorNeedsClearing) // show next display
+  else if (p_primaryButton->wasReleasefor(UPPER_REED_CYCLE_DISPLAY_ACTIVATION) && !primaryButtonIndicatorNeedsClearing) // show next display
   {
     activationTime = lastPrimaryButtonPressLasted;
     reedSwitchTop = true;
@@ -453,7 +452,7 @@ bool checkReedSwitches()
   }
 
   // press second button for 15 seconds to reset leak simulation (TEST MODE)
-  if (p_secondButton->wasReleasefor(SECOND_BUTTON_CANCEL_SIMULATE_LEAK_PRESS) && (simulatedLeakActive || leakAlarmActive))
+  if (p_secondButton->wasReleasefor(LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION) && (simulatedLeakActive || leakAlarmActive))
   {
     simulatedLeakActive = false;
     leakAlarmActive = false;
@@ -464,13 +463,13 @@ bool checkReedSwitches()
     changeMade = true;
   }
   // press second button for 10 seconds reboot
-  else if (p_secondButton->wasReleasefor(SECOND_BUTTON_REBOOT_PRESS))
+  else if (p_secondButton->wasReleasefor(LOWER_REED_REBOOT_ACTIVATION))
   { 
     USB_SERIAL_PRINTLN("Reboot");
     esp_restart();
   }
   // press second button for 5 seconds to attempt WiFi connect and enable OTA
-  else if (p_secondButton->wasReleasefor(SECOND_BUTTON_CONNECT_OTA_PRESS))
+  else if (p_secondButton->wasReleasefor(LOWER_REED_CONNECT_OTA_ACTIVATION))
   { 
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;
@@ -493,7 +492,7 @@ bool checkReedSwitches()
     USB_SERIAL_PRINTLN("Enable OTA Mode");
   }
   // press second button for 1 second to toggle all features on the map
-  else if (p_secondButton->wasReleasefor(SECOND_BUTTON_TOGGLE_MAP_FEATURES_PRESS))
+  else if (p_secondButton->wasReleasefor(LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION))
   {
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;
@@ -507,7 +506,7 @@ bool checkReedSwitches()
     USB_SERIAL_PRINTLN("Toggle show all map features");
   }
   // tap second button for 0.1 second to change zoom level of map
-  else if (p_secondButton->wasReleasefor(SECOND_BUTTON_CYCLE_MAP_ZOOM_LEVEL_PRESS))
+  else if (p_secondButton->wasReleasefor(LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION))
   {
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;

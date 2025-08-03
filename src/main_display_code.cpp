@@ -351,6 +351,7 @@ void drawClockDisplay()
 
 void displayReedActivationIndicators()
 {
+  const int minimumActivationTimeBeforeIndication = 500;
   int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
 
   pressedPrimaryButtonX = 110;
@@ -365,7 +366,7 @@ void displayReedActivationIndicators()
     lastButtonIndicatorUpdateTime = millis();
     
     // Primary button indicator
-    if (primaryButtonIsPressed && millis()-primaryButtonPressedTime > 250)
+    if (primaryButtonIsPressed && millis()-primaryButtonPressedTime > minimumActivationTimeBeforeIndication)
     {
       int seconds = (millis()-primaryButtonPressedTime)/1000;
       int xPos = pressedPrimaryButtonX;
@@ -393,7 +394,7 @@ void displayReedActivationIndicators()
     }
 
     // Second button indicator
-    if (secondButtonIsPressed && millis()-secondButtonPressedTime > 250)
+    if (secondButtonIsPressed && millis()-secondButtonPressedTime > minimumActivationTimeBeforeIndication)
     {
       int seconds = (millis()-secondButtonPressedTime)/1000;
       int xPos = pressedSecondButtonX;
