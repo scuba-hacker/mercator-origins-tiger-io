@@ -109,26 +109,26 @@ void resetCurrentTarget()
 {
   refreshTargetShown = true;
   M5.Lcd.fillScreen(BLACK);
-  display_mode = DISPLAY_5_CURRENT_TARGET;
+  display_mode = DISPLAY_CURRENT_TARGET;
 }
 
 void resetMap()
 {
   mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-  display_mode = DISPLAY_6_MAP;
+  display_mode = DISPLAY_MAP;
 }
 
 void resetClock()
 {
   M5.Lcd.fillScreen(BLACK);
-  display_mode = DISPLAY_3_CLOCK;
+  display_mode = DISPLAY_CLOCK;
 }
 
 bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
 {
     bool changeMade = true;
 
-    if (setDisplayTo != DISPLAY_0_UNDEFINED)
+    if (setDisplayTo != DISPLAY_UNDEFINED)
     {
       display_mode = setDisplayTo;
       refreshCurrentDisplay = true;
@@ -137,11 +137,11 @@ bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
     dumpHeapUsage("cycleDisplays(): ");
     if (refreshCurrentDisplay)
     {
-      if (display_mode == DISPLAY_3_CLOCK)
+      if (display_mode == DISPLAY_CLOCK)
         resetClock();
-      else if (display_mode == DISPLAY_5_CURRENT_TARGET)
+      else if (display_mode == DISPLAY_CURRENT_TARGET)
         resetCurrentTarget();
-      else if (display_mode == DISPLAY_6_MAP)
+      else if (display_mode == DISPLAY_MAP)
         if (mapScreen.get())    // OTA enabling has to delete the map screen
           resetMap();
         else
@@ -154,16 +154,16 @@ bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
     }
     else
     {
-      if (display_mode == DISPLAY_3_CLOCK) // clock mode, next is show current target
+      if (display_mode == DISPLAY_CLOCK) // clock mode, next is show current target
         resetCurrentTarget();
-      else if (display_mode == DISPLAY_5_CURRENT_TARGET)     // show current target, next is map
+      else if (display_mode == DISPLAY_CURRENT_TARGET)     // show current target, next is map
       {
         if (mapScreen.get())    // OTA enabling has to delete the map screen
           resetMap();
         else
           resetClock();   // OTA enabled, go back to clock
       }
-      else if (display_mode == DISPLAY_6_MAP)     // show map, next is clock
+      else if (display_mode == DISPLAY_MAP)     // show map, next is clock
         resetClock();
       else
       {
@@ -183,10 +183,10 @@ void drawDisplay()
   }
   
   // draw display
-  if ( display_mode == DISPLAY_6_MAP)                   { drawMapDisplay();}
-  if ( display_mode == DISPLAY_5_CURRENT_TARGET)        { drawCurrentTargetDisplay();}
-  if ( display_mode == DISPLAY_7_POD_CONTROLS_ENABLED)  { drawPodControlsEnabledDisplay();}
-  if ( display_mode == DISPLAY_3_CLOCK)                 { drawClockDisplay();}
+  if ( display_mode == DISPLAY_MAP)                   { drawMapDisplay();}
+  if ( display_mode == DISPLAY_CURRENT_TARGET)        { drawCurrentTargetDisplay();}
+  if ( display_mode == DISPLAY_POD_CONTROLS_ENABLED)  { drawPodControlsEnabledDisplay();}
+  if ( display_mode == DISPLAY_CLOCK)                 { drawClockDisplay();}
 }
 
 void drawMapDisplay()
@@ -205,7 +205,7 @@ void drawPodControlsEnabledDisplay()
    delay(5000);
    M5.Lcd.fillScreen(TFT_BLACK);
 
-   display_mode = DISPLAY_3_CLOCK;
+   display_mode = DISPLAY_CLOCK;
    drawDisplay();
 }
 
@@ -326,8 +326,14 @@ void drawClockDisplay()
   else if (isPairedWithMako && ESPNowActive)
   {
     M5.Lcd.setCursor(25, mode_label_y_offset+28);
+    M5.Lcd.setCursor(5, mode_label_y_offset+28);
     M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-    M5.Lcd.printf("ESPNow+");
+    if (!pingReceivedFromMako)
+      M5.Lcd.printf("E+ %i %i %i", attemptSendPingResponseToMako, ESPNow_mako_peer.channel, failAttemptSendPingResponseToMako);
+    else if (pingReceivedFromMako % 2)
+      M5.Lcd.printf("E/ %i %i %i", attemptSendPingResponseToMako, ESPNow_mako_peer.channel, failAttemptSendPingResponseToMako);
+    else
+      M5.Lcd.printf("E\\ %i %i %i", attemptSendPingResponseToMako, ESPNow_mako_peer.channel, failAttemptSendPingResponseToMako);
   }
   else if (!isPairedWithMako)
   {

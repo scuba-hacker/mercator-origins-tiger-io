@@ -14,7 +14,7 @@ void configAndStartUpESPNow()
   
   // configure device AP mode
   String Prefix = "Tiger:";
-  String Mac = WiFi.macAddress();
+  String Mac = WiFi.softAPmacAddress();
   String SSID = Prefix + Mac;
   String Password = "123456789";
   bool result = WiFi.softAP(SSID.c_str(), Password.c_str(), ESPNOW_CHANNEL, 0);
@@ -48,6 +48,8 @@ void configAndStartUpESPNow()
   // get recv packer info.
   esp_now_register_send_cb(OnESPNowDataSent);
   esp_now_register_recv_cb(OnESPNowDataRecv);
+  
+  pairWithMako();
 }
 
 bool pairWithMako()
@@ -58,13 +60,10 @@ bool pairWithMako()
     M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
     M5.Lcd.setCursor(0,0);
     const int pairAttempts = 5;
-    //isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
+    // isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
+    // enable fast pairing
     isPairedWithMako = pairWithKnownMAC(ESPNow_mako_peer,"Mako",MAKO_MAC);
-    if (isPairedWithMako)
-    {
-      // send message to tiger to give first target
-      publishToMakoTestMessage("Conn Ok");
-    }
+    M5.Lcd.fillScreen(TFT_BLACK);
   }
 
   return isPairedWithMako;

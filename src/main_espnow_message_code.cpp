@@ -10,9 +10,6 @@ void processIncomingESPNowMessages()
   {
     if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
-      if (!isPairedWithMako)    // only pair with Mako once first message received from Mako.
-        pairWithMako();
-
       switch(rxQueueItemBuffer[0])
       {
         case 'c':   // current target
@@ -99,11 +96,16 @@ void publishToMakoPingResponseMessage()
 {
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
   {
-    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"p");
+    attemptSendPingResponseToMako++;
+    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"p%i", attemptSendPingResponseToMako);
     USB_SERIAL_PRINTLN("Sending ESP p msg to Mako... Ping Response Message");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
-
+    pingReceivedFromMako++;
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+  else
+  {
+    failAttemptSendPingResponseToMako++;
   }
 }
 void publishToMakoTestMessage(const char* testMessage)

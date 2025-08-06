@@ -2,7 +2,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
@@ -27,6 +27,8 @@ ESPNow Commands
 #include "SerialConfig.h"
 
 #include <esp_now.h>
+#include <Preferences.h>
+
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <freertos/queue.h>
@@ -56,7 +58,9 @@ bool testGPSTimezone=true;           // test GPS timezone detection with simulat
 bool enableOTAServerAtStartup=false; // OTA updates - don't set true without disabling mapscreen, insufficient heap
 
 const bool enableESPNow = !enableOTAServerAtStartup; // cannot have OTA server on regular wifi and espnow concurrently running
-
+int pingReceivedFromMako = 0;
+int attemptSendPingResponseToMako = 0;
+int failAttemptSendPingResponseToMako = 0;
 const String ssid_not_connected = "-";
 String ssid_connected;
 
@@ -122,9 +126,14 @@ bool isLeakDetected() { // Direct GPIO Read Bypass button press code
   return digitalRead(LEAK_DETECTOR_GPIO) == false;
 }
 
+void forceReedSwitchesPrimaryControl();
+
 bool topReedActiveAtStartup = false;
 bool sideReedActiveAtStartup = false;
   
+Preferences persistedPreferences;
+String latestConnectedWiFiSSID;
+
 bool recoveryScreenShown = false;
 
 const uint16_t mode_label_y_offset = 170;
@@ -169,14 +178,14 @@ const char* leakAlarmMsg = "\nWATER\n\nLEAK\n\nALARM";
 
 enum e_display_modes 
 {
-  DISPLAY_0_UNDEFINED,
-  DISPLAY_3_CLOCK, 
-  DISPLAY_6_MAP,
-  DISPLAY_5_CURRENT_TARGET,
-  DISPLAY_7_POD_CONTROLS_ENABLED
+  DISPLAY_UNDEFINED,
+  DISPLAY_CLOCK, 
+  DISPLAY_MAP,
+  DISPLAY_CURRENT_TARGET,
+  DISPLAY_POD_CONTROLS_ENABLED
 };
 
-e_display_modes display_mode = DISPLAY_3_CLOCK;
+e_display_modes display_mode = DISPLAY_CLOCK;
 
 const int defaultBrightness = 100;
 
@@ -197,7 +206,8 @@ void initialiseRTCfromNTP();
 bool detectTimezoneFromIP(long& timezoneOffset);
 bool detectTimezoneFromGPS(double lat, double lon);
 bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset);
-bool cycleDisplays(bool refreshCurrentDisplay = false, e_display_modes setDisplayTo = DISPLAY_0_UNDEFINED);
+bool cycleDisplays(bool refreshCurrentDisplay = false, e_display_modes setDisplayTo = DISPLAY_UNDEFINED);
+bool checkForDualButtonPresses();
 bool checkReedSwitches();
 void shutdownIfUSBPowerOff();
 void publishToMakoPingResponseMessage();
@@ -270,6 +280,7 @@ bool ESPNowManagePeer(esp_now_peer_info_t& peer);
 void ESPNowDeletePeer(esp_now_peer_info_t& peer);
 bool TeardownESPNow();
 void handleOTAShutdown();
+void toggleWiFi();
 
 uint8_t redLEDStatus = HIGH;  // HIGH == off, LOW == on
 
@@ -293,6 +304,12 @@ bool haltAllProcessingDuringOTAUpload = false;
 bool forceLoopInitialOTAEnablement = false;
 const char* buildTimestamp = __DATE__ " " __TIME__;
 
+void readPreferencesFromEEPROM()
+{
+  // Initialize preferences and load prefs from EEPROM
+  persistedPreferences.begin("tiger_config", false);
+  latestConnectedWiFiSSID = persistedPreferences.getString("lastSSID", "");
+}
 // OTA shutdown variables
 bool otaShutdownRequested = false;
 uint32_t otaShutdownStartTime = 0;
@@ -345,189 +362,13 @@ void setup()
 
   initialiseRTCfromNTP();
 
-  // override clock screen to be test for target received from espnow
-  display_mode = DISPLAY_3_CLOCK;
-
   if (enableESPNow && msgsReceivedQueue)
   {
     configAndStartUpESPNow();
-    // defer pairing with mako for sending messages to mako until first message received from mako.
   }
 
-  dumpHeapUsage("Setup(): end ");
-}
-
-void setPrimaryControls(const bool useReedSwitches)
-{
-  if (useReedSwitches)
-  {
-    p_primaryButton = &ReedSwitchGoProTop;
-    p_secondButton = &ReedSwitchGoProSide;
-  }
-  else
-  {
-    p_primaryButton = &M5.BtnA;
-    p_secondButton = &M5.BtnB;
-  }
-}
-
-void forceReedSwitchesPrimaryControl()
-{
-  // get out of jail...
-  // If the code is uploaded to Tiger in the pod with reedSwitchesPrimaryControl set to true (ie from being tested on the bench outside the pod, or
-  // another M5 stick as a test device), then the reeds don't work and there is no way to force an OTA to get this corrected.
-  // This is a special case where closing either reed switch when in ButtonsPrimary mode switches to the reed switches as primary
-  // so that the code can be re-uploaded with the primaries set back to the reeds.
-  // Without this you have to open the GoPro case and physically upload code to Tiger using USB-C. Not nice as the pod needs dismantling to do this!
-  reedSwitchesPrimaryControl = true;
-  setPrimaryControls(reedSwitchesPrimaryControl); 
-  display_mode = DISPLAY_7_POD_CONTROLS_ENABLED;
-}
-  
-bool checkReedSwitches()
-{  
-  bool changeMade = false;
-
-  bool reedSwitchTop;
-  uint32_t activationTime=0;
-    
-  updateButtonsAndBuzzer();
-
-  displayReedActivationIndicators();
-
-  // Check for 20-second press to simulate leak (TEST MODE)  
-  const uint32_t UPPER_REED_SIMULATE_LEAK_ACTIVATION = 20000;             // Any display - TOP-RIGHT - 20s simulate leak
-  const uint32_t UPPER_REED_ESPNOW_ON_ACTIVATION = 5000;                  // Any display - TOP-RIGHT - 5s  enable ESP Now if off
-  const uint32_t UPPER_REED_CYCLE_DISPLAY_ACTIVATION = 100;               // Any display - TOP-RIGHT - tap to cycle the display
-
-  const uint32_t LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION = 15000;      // Any display - BOT-LEFT - 15s cancel leak simulation
-  const uint32_t LOWER_REED_REBOOT_ACTIVATION = 10000;                    // Any display - BOT-LEFT - 10s reboot
-  const uint32_t LOWER_REED_CONNECT_OTA_ACTIVATION = 5000;                // Any display - BOT-LEFT - 5s  enable OTA server
-
-  const uint32_t LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION = 1000;        // Map only    - BOT-LEFT - Toggle show all features
-  const uint32_t LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION = 100;        // Map only    - BOT-LEFT - Cycle map zoom level
-
-  if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
-  {
-    delay(500);                                       // small delay to let the reed open again
-    forceReedSwitchesPrimaryControl();                // get out of Jail, make reed switches primary control and not M5 buttons
-    publishToMakoForceGoProButtonsPrimaryControl();   // also tell Mako to use Go Pro Buttons and not M5 buttons - in case he is in Jail!
-    
-    changeMade = true;
-    return changeMade;
-  }
-
-  // Check for 20-second press to simulate leak (TEST MODE)
-  if (p_primaryButton->wasReleasefor(UPPER_REED_SIMULATE_LEAK_ACTIVATION) && !simulatedLeakActive)
-  {
-    simulatedLeakActive = true;
-    USB_SERIAL_PRINTLN("*** LEAK SIMULATION ACTIVATED ***");
-    changeMade = true;
-  }
-  // press second button for 5 seconds turn on ESP Now if it is currently off
-  else if (p_primaryButton->wasReleasefor(UPPER_REED_ESPNOW_ON_ACTIVATION))
-  {
-    if (!ESPNowActive)
-    {
-      if (!otaActive)
-        configAndStartUpESPNow();
-      else 
-        USB_SERIAL_PRINTLN("Cannot enable ESP Now when OTA is active");
-    }
-    else
-    {
-      USB_SERIAL_PRINTLN("ESP Now already enabled");
-    }
-  }
-  // Normal button press for display cycling (but only if not showing indicators)
-  else if (p_primaryButton->wasReleasefor(UPPER_REED_CYCLE_DISPLAY_ACTIVATION) && !primaryButtonIndicatorNeedsClearing) // show next display
-  {
-    activationTime = lastPrimaryButtonPressLasted;
-    reedSwitchTop = true;
-    changeMade = true;
-
-    USB_SERIAL_PRINTLN("Cycle To Next Display");
-    cycleDisplays();
-  }
-
-  // press second button for 15 seconds to reset leak simulation (TEST MODE)
-  if (p_secondButton->wasReleasefor(LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION) && (simulatedLeakActive || leakAlarmActive))
-  {
-    simulatedLeakActive = false;
-    leakAlarmActive = false;
-    leakAlarmCurrentlyShowing = false;
-    M5.Beep.mute();
-    hideLeakAlarm();
-    USB_SERIAL_PRINTLN("*** LEAK SIMULATION RESET ***");
-    changeMade = true;
-  }
-  // press second button for 10 seconds reboot
-  else if (p_secondButton->wasReleasefor(LOWER_REED_REBOOT_ACTIVATION))
-  { 
-    USB_SERIAL_PRINTLN("Reboot");
-    esp_restart();
-  }
-  // press second button for 5 seconds to attempt WiFi connect and enable OTA
-  else if (p_secondButton->wasReleasefor(LOWER_REED_CONNECT_OTA_ACTIVATION))
-  { 
-    activationTime = lastSecondButtonPressLasted;
-    reedSwitchTop = false;
-
-    TeardownESPNow();
-    isPairedWithMako = false;
-
-    dumpHeapUsage("checkReedSwitches(): begin switch to OTA");
-
-    // enable OTA
-    const bool wifiOnly = false;
-    M5.Lcd.fillScreen(TFT_BLACK);
-    const int maxWifiScanAttempts = 3;
-    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
-
-    changeMade = true;
-    const bool refreshCurrentScreen=true;
-    cycleDisplays(refreshCurrentScreen);
-
-    USB_SERIAL_PRINTLN("Enable OTA Mode");
-  }
-  // press second button for 1 second to toggle all features on the map
-  else if (p_secondButton->wasReleasefor(LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION))
-  {
-    activationTime = lastSecondButtonPressLasted;
-    reedSwitchTop = false;
-
-    if (display_mode == DISPLAY_6_MAP)    // toggle showing all features on the map
-    {
-      mapScreen->toggleDrawAllFeatures();
-      mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-      changeMade = true;
-    }
-    USB_SERIAL_PRINTLN("Toggle show all map features");
-  }
-  // tap second button for 0.1 second to change zoom level of map
-  else if (p_secondButton->wasReleasefor(LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION))
-  {
-    activationTime = lastSecondButtonPressLasted;
-    reedSwitchTop = false;
-
-    if (display_mode == DISPLAY_6_MAP) // map mode - cycle zoom
-    {
-      mapScreen->cycleZoom(); changeMade = true;
-      mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-
-      USB_SERIAL_PRINTLN("Cycle zoom level on map");
-    }
-  }
-  
-  // Notify Mako of the reed switch being activated
-  if (activationTime > 0)
-  {
-    USB_SERIAL_PRINTLN("Reed Activated...");
-
-    publishToMakoReedActivation(reedSwitchTop, activationTime);
-  }
-  
-  return changeMade;
+  M5.Lcd.fillScreen(TFT_BLACK);
+  display_mode = DISPLAY_CLOCK;
 }
 
 /////////////// EVENT LOOP
@@ -541,11 +382,8 @@ void loop()
   // Handle OTA shutdown request from WebSerial command
   if (otaShutdownRequested) {
     handleOTAShutdown();
-    return; // Exit loop during shutdown
+    return;
   }
-
-  if (!isPairedWithMako)
-    pairWithMako();
 
   processIncomingESPNowMessages();
   
@@ -635,6 +473,9 @@ void shutdownIfUSBPowerOff()
 
 #define BUILD_INCLUDE_MAIN_DISPLAY_CODE
 #include "main_display_code.cpp"
+
+#define BUILD_INCLUDE_MAIN_BUTTON_PRESS_CODE
+#include "main_button_press_code.cpp"
 
 #define BUILD_INCLUDE_MAIN_NETWORK_CODE
 #include "main_network_code.cpp"
