@@ -452,8 +452,11 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
   WiFi.mode(WIFI_STA);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
-  WiFi.setHostname("tiger");
-
+  if (reedSwitchesPrimaryControl)
+    WiFi.setHostname("tiger");
+  else
+    WiFi.setHostname("tiger-test");
+  
   WiFi.begin(_ssid, _password);
 
   // Wait for connection for max of timeout milliseconds

@@ -98,16 +98,32 @@ void publishToMakoPingResponseMessage()
   {
     attemptSendPingResponseToMako++;
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"p%i", attemptSendPingResponseToMako);
-    USB_SERIAL_PRINTLN("Sending ESP p msg to Mako... Ping Response Message");
-    USB_SERIAL_PRINTLN(mako_espnow_buffer);
+    USB_SERIAL_PRINTF("Sending ESP p msg to Mako... Ping Response Message: %s\n",mako_espnow_buffer);
     pingReceivedFromMako++;
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    toSerialESPNowSendDataResult(ESPNowSendResult);
+
+    if (ESPNowSendResult == ESP_OK)
+    {
+      toggleRedLED();
+    }
+    else
+    {
+      toggleRedLED();
+      delay(100);
+      toggleRedLED();
+      delay(100);
+      toggleRedLED();
+      delay(100);
+      toggleRedLED();
+    }
   }
   else
   {
     failAttemptSendPingResponseToMako++;
   }
 }
+
 void publishToMakoTestMessage(const char* testMessage)
 {
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
@@ -143,6 +159,7 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
     USB_SERIAL_PRINTLN("Sending ESP R msg to Mako... Reed Activation");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    toSerialESPNowSendDataResult(ESPNowSendResult);
   }
   else
   {

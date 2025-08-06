@@ -2,7 +2,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
@@ -51,7 +51,7 @@ AsyncElegantOtaClass AsyncElegantOTA;
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
-bool writeLogToSerial=true;
+bool writeLogToSerial=false;
 bool testPreCannedLatLong=false;       // test that animates the diver sprite through slow movements across the lake.
 bool testGPSTimezone=true;           // test GPS timezone detection with simulated coordinates
 
@@ -71,7 +71,6 @@ uint16_t ESPNowMessagesFailedToDeliver = 0;
 
 const uint8_t ESPNOW_CHANNEL=1;
 const uint8_t ESPNOW_NO_PEER_CHANNEL_FLAG = 0xFF;
-const uint8_t ESPNOW_PRINTSCANRESULTS = 0;
 const uint8_t ESPNOW_DELETEBEFOREPAIR = 0;
 
 esp_now_peer_info_t ESPNow_mako_peer;
@@ -226,6 +225,7 @@ void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2);
 void resetCurrentTarget();
 void resetMap();
 void resetClock();
+void toSerialESPNowSendDataResult(const esp_err_t result);
 const char* scanForKnownNetwork();
 bool setupOTAWebServer(const char* _ssid, const char* _password, const char* label, uint32_t timeout, bool wifiOnly = false);
 void updateButtonsAndBuzzer();
@@ -272,7 +272,7 @@ void processIncomingESPNowMessages();
 void configAndStartUpESPNow();
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
-bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const bool suppressPeerFoundMsg = true);
+bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix);
 bool pairWithMako();
 bool pairWithPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, int maxAttempts);
 bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const char* message);
