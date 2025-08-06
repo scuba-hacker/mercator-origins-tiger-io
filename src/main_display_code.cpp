@@ -329,11 +329,11 @@ void drawClockDisplay()
     M5.Lcd.setCursor(5, mode_label_y_offset+28);
     M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);    
     if (!pingReceivedFromMako)
-      M5.Lcd.printf("ESPNow+ %i", attemptSendPingResponseToMako);
+      M5.Lcd.printf("ESP+ %i", attemptSendPingResponseToMako);
     else if (pingReceivedFromMako % 2)
-      M5.Lcd.printf("EspNow/ %i", attemptSendPingResponseToMako);
+      M5.Lcd.printf("Esp/ %i", attemptSendPingResponseToMako);
     else
-      M5.Lcd.printf("EspNow\\ %i", attemptSendPingResponseToMako);
+      M5.Lcd.printf("Esp\\ %i", attemptSendPingResponseToMako);
   }
   else if (!isPairedWithMako)
   {

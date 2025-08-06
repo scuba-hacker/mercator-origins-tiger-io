@@ -6,6 +6,7 @@ bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physi
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
+bool writeLogToSerial=false;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +52,6 @@ AsyncElegantOtaClass AsyncElegantOTA;
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
 
-bool writeLogToSerial=false;
 bool testPreCannedLatLong=false;       // test that animates the diver sprite through slow movements across the lake.
 bool testGPSTimezone=true;           // test GPS timezone detection with simulated coordinates
 
