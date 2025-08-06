@@ -22,6 +22,10 @@ void  initialiseRTCfromNTP()
 
       updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
     }
+      // Properly disconnect and reset WiFi mode for ESP-NOW
+      WiFi.disconnect();
+      WiFi.mode(WIFI_OFF);
+      delay(100);
   }
 
   M5.Lcd.fillScreen(BLACK);

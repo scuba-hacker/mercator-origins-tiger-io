@@ -4,21 +4,8 @@
 ///////////////////////////////// ESPNow Network Functions
 ////////////////////////////////////////////////////////////////////////
 
-void InitESPNow()
-{
-  WiFi.disconnect();
-  if (esp_now_init() == ESP_OK)
-  {
-    USB_SERIAL_PRINTLN("ESPNow Init Success");
-    ESPNowActive = true;
-  }
-  else
-  {
-    USB_SERIAL_PRINTLN("ESPNow Init Failed");
-    ESPNowActive = false;
-  }
-}
-
+uint8_t MAKO_MAC[6] = {0x94, 0xB9, 0x7E, 0xAC, 0xF5, 0x45};       // AP Mac, not STA Mac shown in router
+bool pairWithKnownMAC(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const uint8_t* knownMAC);
 
 void configAndStartUpESPNow()
 {  
@@ -26,22 +13,6 @@ void configAndStartUpESPNow()
   WiFi.mode(WIFI_AP);
   
   // configure device AP mode
-  configESPNowDeviceAP();
-  
-  // This is the mac address of this peer in AP Mode
-  USB_SERIAL_PRINT("AP MAC: "); 
-  USB_SERIAL_PRINTLN(WiFi.softAPmacAddress());
-  // Init ESPNow with a fallback logic
-  InitESPNow();
-  
-  // Once ESPNow is successfully Init, we will register for recv CB to
-  // get recv packer info.
-  esp_now_register_send_cb(OnESPNowDataSent);
-  esp_now_register_recv_cb(OnESPNowDataRecv);
-}
-
-void configESPNowDeviceAP()
-{
   String Prefix = "Tiger:";
   String Mac = WiFi.macAddress();
   String SSID = Prefix + Mac;
@@ -57,6 +28,26 @@ void configESPNowDeviceAP()
     USB_SERIAL_PRINTF("AP Config Success. Broadcasting with AP: %s\n",String(SSID).c_str());
     USB_SERIAL_PRINTF("WiFi Channel: %d\n",WiFi.channel());
   }
+
+  // This is the mac address of this peer in AP Mode
+  USB_SERIAL_PRINT("AP MAC: "); 
+  USB_SERIAL_PRINTLN(WiFi.softAPmacAddress());
+
+  if (esp_now_init() == ESP_OK)
+  {
+    USB_SERIAL_PRINTLN("ESPNow Init Success");
+    ESPNowActive = true;
+  }
+  else
+  {
+    USB_SERIAL_PRINTLN("ESPNow Init Failed");
+    ESPNowActive = false;
+  }
+  
+  // Once ESPNow is successfully Init, we will register for recv CB to
+  // get recv packer info.
+  esp_now_register_send_cb(OnESPNowDataSent);
+  esp_now_register_recv_cb(OnESPNowDataRecv);
 }
 
 bool pairWithMako()
@@ -67,8 +58,8 @@ bool pairWithMako()
     M5.Lcd.setTextColor(TFT_WHITE,TFT_BLACK);
     M5.Lcd.setCursor(0,0);
     const int pairAttempts = 5;
-    isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
-
+    //isPairedWithMako = pairWithPeer(ESPNow_mako_peer,"Mako",pairAttempts); // 5 connection attempts
+    isPairedWithMako = pairWithKnownMAC(ESPNow_mako_peer,"Mako",MAKO_MAC);
     if (isPairedWithMako)
     {
       // send message to tiger to give first target
@@ -131,6 +122,31 @@ bool TeardownESPNow()
   }
   
   return result;
+}
+
+bool pairWithKnownMAC(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const uint8_t* knownMAC)
+{
+  // Skip scanning - use known MAC directly
+  // IMPORTANT: Reset peer structure first (same as ESPNowScanForPeer does)
+  memset(&peer, 0, sizeof(peer));
+  
+  // Setup peer structure with known MAC
+  memcpy(peer.peer_addr, knownMAC, 6);
+  peer.channel = ESPNOW_CHANNEL;
+  peer.encrypt = 0;
+  peer.priv = (void*)peerSSIDPrefix;
+  
+  // Add some delay to allow ESP-NOW to settle
+  delay(100);
+  
+  bool isPaired = ESPNowManagePeer(peer);
+  
+  if (!isPaired)
+  {
+    peer.channel = ESPNOW_NO_PEER_CHANNEL_FLAG;
+  }
+
+  return isPaired;
 }
 
 // Scan for peers in AP mode

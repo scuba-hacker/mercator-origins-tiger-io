@@ -26,6 +26,12 @@ void processIncomingESPNowMessages()
           break;
         }
 
+        case 'P':     // Ping message
+        {
+          // send back a ping response to Mako - make generic later
+          publishToMakoPingResponseMessage();
+          break;
+        }
         case 'X':   // location, heading and current Target info.
         {
           // format: targetCode[7],lat,long,heading,targetText
@@ -89,6 +95,17 @@ void processIncomingESPNowMessages()
   }
 }
 
+void publishToMakoPingResponseMessage()
+{
+  if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)
+  {
+    snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"p");
+    USB_SERIAL_PRINTLN("Sending ESP p msg to Mako... Ping Response Message");
+    USB_SERIAL_PRINTLN(mako_espnow_buffer);
+
+    ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+  }
+}
 void publishToMakoTestMessage(const char* testMessage)
 {
   if (isPairedWithMako && ESPNow_mako_peer.channel == ESPNOW_CHANNEL)

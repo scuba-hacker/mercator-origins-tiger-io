@@ -200,6 +200,7 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset);
 bool cycleDisplays(bool refreshCurrentDisplay = false, e_display_modes setDisplayTo = DISPLAY_0_UNDEFINED);
 bool checkReedSwitches();
 void shutdownIfUSBPowerOff();
+void publishToMakoPingResponseMessage();
 void publishToMakoTestMessage(const char* testMessage);
 void publishToMakoReedActivation(const bool topReed, const uint32_t ms);
 void publishToMakoLeakDetected();
@@ -258,9 +259,7 @@ void initialiseLeakAlarm(const char* msg);
 void hideLeakAlarm();
 void checkUSBPowerAndAutoShutdown();
 void processIncomingESPNowMessages();
-void InitESPNow();
 void configAndStartUpESPNow();
-void configESPNowDeviceAP();
 void OnESPNowDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 bool ESPNowScanForPeer(esp_now_peer_info_t& peer, const char* peerSSIDPrefix, const bool suppressPeerFoundMsg = true);
@@ -545,8 +544,11 @@ void loop()
     return; // Exit loop during shutdown
   }
 
-  processIncomingESPNowMessages();
+  if (!isPairedWithMako)
+    pairWithMako();
 
+  processIncomingESPNowMessages();
+  
   // Update display every 100ms asynchronously (but not during leak alarm flash sequence)
   if (millis() - lastDisplayUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash)
   {
