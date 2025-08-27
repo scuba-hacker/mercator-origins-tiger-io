@@ -6,9 +6,9 @@
 
 void processIncomingESPNowMessages()
 {
- if (msgsReceivedQueue && !otaActive && ESPNowActive)
+ if (espNOW_msgsReceivedQueue && !otaActive && ESPNowActive)
   {
-    if (xQueueReceive(msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
+    if (xQueueReceive(espNOW_msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
     {
       switch(rxQueueItemBuffer[0])
       {

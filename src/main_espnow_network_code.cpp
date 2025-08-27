@@ -419,9 +419,9 @@ void OnESPNowDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len
   USB_SERIAL_PRINTF("OnESPNowDataRecv: Last Packet Recv Length: %d\n",data_len);
   USB_SERIAL_PRINTF("OnESPNowDataRecv: message: %s\n",(char*)data);
 
-  if (msgsReceivedQueue && ESPNowActive)
+  if (espNOW_msgsReceivedQueue && ESPNowActive)
   {
-    xQueueSend(msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
+    xQueueSend(espNOW_msgsReceivedQueue, (void*)data, (TickType_t)0);  // don't block on enqueue, just drop if queue is full
   }
 }
 

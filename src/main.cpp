@@ -82,7 +82,7 @@ esp_err_t ESPNowSendResult=(esp_err_t)RESET_ESPNOW_SEND_RESULT;
 char mako_espnow_buffer[256];
 char currentTime[9];
 
-QueueHandle_t msgsReceivedQueue;
+QueueHandle_t espNOW_msgsReceivedQueue;
 
 bool ESPNowActive = false;
 
@@ -344,14 +344,14 @@ void setup()
   mapScreen->setDrawAllFeatures(true);
   mapScreen->setUseDiverHeading(true);
 
-  msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
+  espNOW_msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
-  if (msgsReceivedQueue == nullptr)
+  if (espNOW_msgsReceivedQueue == nullptr)
     USB_SERIAL_PRINTLN("Failed to create queue");
   else
     USB_SERIAL_PRINTLN("Created msg queue");
 
-  if (msgsReceivedQueue)
+  if (espNOW_msgsReceivedQueue)
   {
     M5.Lcd.println("Created msg queue");
   }
@@ -362,7 +362,7 @@ void setup()
 
   initialiseRTCfromNTP();
 
-  if (enableESPNow && msgsReceivedQueue)
+  if (enableESPNow && espNOW_msgsReceivedQueue)
   {
     configAndStartUpESPNow();
   }

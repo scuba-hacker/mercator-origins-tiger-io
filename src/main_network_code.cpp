@@ -86,11 +86,11 @@ void disableFeaturesForOTA(bool screenToRed=true)
   }
   
   // Flush and safely handle the message queue
-  if (msgsReceivedQueue) {
+  if (espNOW_msgsReceivedQueue) {
     USB_SERIAL_PRINTLN("Flushing ESP-NOW message queue...");
     char tempBuffer[256];
     // Drain any remaining messages
-    while (xQueueReceive(msgsReceivedQueue, tempBuffer, 0) == pdTRUE) {
+    while (xQueueReceive(espNOW_msgsReceivedQueue, tempBuffer, 0) == pdTRUE) {
       // Just discard the messages
     }
   }
