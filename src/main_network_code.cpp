@@ -1,4 +1,3 @@
-
 #ifdef BUILD_INCLUDE_MAIN_NETWORK_CODE
 
 #include "logs_page.h"
@@ -9,12 +8,12 @@
 
 // *************************** WiFi Persistence using Preferences ***************************
 
-void saveLastSSID(const char* ssid) {
+void saveLastConnectedSSID(const char* ssid) {
   persistedPreferences.putString("lastSSID", String(ssid));
   USB_SERIAL_PRINTF("Saved last SSID: %s\n", ssid);
 }
 
-String loadLastSSID() {
+String loadLastConnectedSSID() {
   String ssid = persistedPreferences.getString("lastSSID", "");
   if (ssid.length() > 0) {
     USB_SERIAL_PRINTF("Loaded last SSID: %s\n", ssid.c_str());
@@ -476,6 +475,7 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
   if (WiFi.status() == WL_CONNECTED )
   {
+    saveLastConnectedSSID(_ssid);
     if (wifiOnly == false && !otaActive)
     {
       asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -508,10 +508,10 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
       otaActive = true;
       connected = true;
     }
-    else
-    {
-      M5.Lcd.print("No Connect");
-    }
+  }
+  else
+  {
+    M5.Lcd.printf("No Conn %s",_ssid);
   }
 
   return connected;
@@ -520,42 +520,44 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
 
 bool connectToLastConnectedWifiNetwork(const bool wifiOnly)
 {
-  const uint32_t lastKnownNetworkTimeout = 5000;
+  const uint32_t lastKnownNetworkTimeout = 10000;
 
-  String lastSSID = loadLastSSID();
+  String lastSSID = loadLastConnectedSSID();
+  M5.Lcd.printf("LastConn:%s",lastSSID.c_str());
+  // allow twice timeout delay as connecting to last connected SSID.
   if (lastSSID.length() > 0)
   {
     if (lastSSID.equals(ssid_1))
     {
-      if (setupOTAWebServer(ssid_1, password_1, label_1, timeout_1, wifiOnly))
+      if (setupOTAWebServer(ssid_1, password_1, label_1, timeout_1 * 2, wifiOnly))
       {
-        saveLastSSID(ssid_1);
-        return true;
+        M5.Lcd.printf("Conn SSID:%s\n",ssid_1);
+        saveLastConnectedSSID(ssid_1);
       }
     }
     else if (lastSSID.equals(ssid_2))
     {
-      if (setupOTAWebServer(ssid_2, password_2, label_2, timeout_2, wifiOnly))
+      if (setupOTAWebServer(ssid_2, password_2, label_2, timeout_2 * 2, wifiOnly))
       {
-        saveLastSSID(ssid_2);
-        return true;
+        M5.Lcd.printf("Conn SSID:%s\n",ssid_2);
+        saveLastConnectedSSID(ssid_2);
       }
     }
     else if (lastSSID.equals(ssid_3))
     {
-      if (setupOTAWebServer(ssid_3, password_3, label_3, timeout_3, wifiOnly))
+      if (setupOTAWebServer(ssid_3, password_3, label_3, timeout_3 * 2, wifiOnly))
       {
-        saveLastSSID(ssid_3);
-        return true;
+        M5.Lcd.printf("Conn SSID:%s\n",ssid_3);
+        saveLastConnectedSSID(ssid_3);
       }
     }
     else
     {
-      saveLastSSID("");
+      M5.Lcd.println("No conn SSIDs");
     }
   }
 
-  return false;
+  return WiFi.status() == WL_CONNECTED;
 }
 
 bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const char* message)
@@ -613,11 +615,12 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const 
   if (connected)
   {
     ssid_connected = WiFi.SSID();
-    saveLastSSID(ssid_connected.c_str());
+    saveLastConnectedSSID(ssid_connected.c_str());
   }
   else
   {
     ssid_connected = ssid_not_connected;
+    saveLastConnectedSSID("-");
   }
   
   return connected;

@@ -19,6 +19,12 @@ Serial Commands
 ESPNow Commands 
 */
 
+/*
+Slinky with Grasplet sim gives Sofia, Bulgaria as geolocation of IP - can use for timezone
+80.95.21.62
+Sofia, Bulgaria
+*/
+
 #include <Arduino.h>
 
 #include <M5StickCPlus.h>
@@ -48,6 +54,8 @@ AsyncElegantOtaClass AsyncElegantOTA;
 #include "soc/rtc_wdt.h"
 #include "esp_task_wdt.h"
 #include <time.h>
+
+#include <ArduinoJson.h>
 
 // rename the git file "mercator_secrets_template.c" to the filename below, filling in your wifi credentials etc.
 #include "mercator_secrets.c"
@@ -132,6 +140,7 @@ bool sideReedActiveAtStartup = false;
   
 Preferences persistedPreferences;
 String latestConnectedWiFiSSID;
+long latestTimezoneOffset;
 
 bool recoveryScreenShown = false;
 
@@ -169,8 +178,10 @@ const char* ntpServer = "pool.ntp.org";
 bool timezoneSetFromIP = false;
 bool timezoneVerifiedFromGPS = false;
 long detectedTimezoneOffset = 0;
+bool hardcodeUKLocation = true;    // timezone offset needs to be done by GPS Fix as Silky Grasplet has Sofia IP
 
 RTC_TimeTypeDef RTC_TimeStruct;
+
 RTC_DateTypeDef RTC_DateStruct;
 
 const char* leakAlarmMsg = "\nWATER\n\nLEAK\n\nALARM";
@@ -204,6 +215,7 @@ bool cutShortLoopOnOTADemand();
 void initialiseRTCfromNTP();
 bool detectTimezoneFromIP(long& timezoneOffset);
 bool detectTimezoneFromGPS(double lat, double lon);
+bool useLondonTimezoneOffset(long& timezoneOffset);
 bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset);
 bool cycleDisplays(bool refreshCurrentDisplay = false, e_display_modes setDisplayTo = DISPLAY_UNDEFINED);
 bool checkForDualButtonPresses();
@@ -309,7 +321,9 @@ void readPreferencesFromEEPROM()
   // Initialize preferences and load prefs from EEPROM
   persistedPreferences.begin("tiger_config", false);
   latestConnectedWiFiSSID = persistedPreferences.getString("lastSSID", "");
+  latestTimezoneOffset = persistedPreferences.getLong("tz_offset", 0);
 }
+
 // OTA shutdown variables
 bool otaShutdownRequested = false;
 uint32_t otaShutdownStartTime = 0;
@@ -333,6 +347,10 @@ void setup()
   if (systemStartupAndCheckForOTADemand())
     return;     // OTA Required, skip rest of setup.
   
+  readPreferencesFromEEPROM();
+
+  // persistedPreferences.putLong("tz_offset", 3600);
+
   strncpy(previousTarget,"None",sizeof(previousTarget));
   strncpy(currentTarget,"  No\nTarget\n  Set\n From\n Mako",sizeof(currentTarget));
 

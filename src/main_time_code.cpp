@@ -1,5 +1,14 @@
 #ifdef BUILD_INCLUDE_MAIN_TIME_CODE
 
+void saveLastTimezoneOffset(long offset) {
+  persistedPreferences.putLong("tz_offset", offset);
+}
+
+long loadLastTimezoneOffset() {
+  latestTimezoneOffset = persistedPreferences.getLong("tz_offset", 0);
+  return latestTimezoneOffset;
+}
+
 void  initialiseRTCfromNTP()
 {
   M5.Lcd.fillScreen(BLACK);
@@ -10,22 +19,40 @@ void  initialiseRTCfromNTP()
   const int maxWifiScanAttempts = 2;  
   if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP\nTime...\n"))
   {
-    M5.Lcd.println("Wifi OK");
-    
-    // Detect timezone from IP if not already set
-    if (!timezoneSetFromIP) 
-    {
-      if (detectTimezoneFromIP(detectedTimezoneOffset))
-        USB_SERIAL_PRINTF("initialiseFromNTP: calling updateRTCFromNTP detectedTimezoneOffset=%ld\n",detectedTimezoneOffset);
-      else
-        USB_SERIAL_PRINTLN("initialiseFromNTP: timezone not detected from IP");
+    M5.Lcd.println("NTP Wifi OK");
+    delay(500);
 
-      updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
+    if (hardcodeUKLocation)
+    {
+      useLondonTimezoneOffset(detectedTimezoneOffset);
+      // Second param is offset for timezone (0 for London)
+      // Third param is offset for DST (0 or 3600 for London)
+      updateRTCFromNTP("initialiseRTCfromNTP",0,detectedTimezoneOffset);
     }
-      // Properly disconnect and reset WiFi mode for ESP-NOW
-      WiFi.disconnect();
-      WiFi.mode(WIFI_OFF);
-      delay(100);
+    else
+    {
+      // Detect timezone from IP if not already set
+      if (!timezoneSetFromIP) 
+      {
+        if (detectTimezoneFromIP(detectedTimezoneOffset))
+          USB_SERIAL_PRINTF("initialiseFromNTP: calling updateRTCFromNTP detectedTimezoneOffset=%ld\n",detectedTimezoneOffset);
+        else
+          USB_SERIAL_PRINTLN("initialiseFromNTP: timezone not detected from IP");
+
+        updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
+      }
+    }
+
+    // Properly disconnect and reset WiFi mode for ESP-NOW
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    M5.Lcd.println("NTP Updated");
+    delay(500);
+  }
+  else
+  {
+    M5.Lcd.println("NTP Wifi NOT OK");
+    delay(1000);
   }
 
   M5.Lcd.fillScreen(BLACK);
@@ -34,6 +61,76 @@ void  initialiseRTCfromNTP()
   resetClock();
 }
 
+bool useLondonTimezoneOffset(long& timezoneOffset)
+{
+  // accommodates for British Summer Time
+  bool result = false;
+
+  timezoneOffset = 0;
+
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+    timezoneOffset = loadLastTimezoneOffset();
+    return true;
+  }
+
+  WiFiClient client;
+  HTTPClient httpLondonTZOffset;
+  String payload;
+
+  M5.Lcd.println("BST:");
+  httpLondonTZOffset.begin(client, "http://worldtimeapi.org/api/timezone/Europe/London");
+  httpLondonTZOffset.setTimeout(10000); // 10 second timeout
+  
+  int httpCode = httpLondonTZOffset.GET();
+
+  if (httpCode == HTTP_CODE_OK)
+  {
+    payload = httpLondonTZOffset.getString();
+    M5.Lcd.println(payload);
+
+    if (payload.length() > 0)
+    {
+      StaticJsonDocument<128> filter;
+      filter["dst_offset"] = true;
+
+      StaticJsonDocument<256> doc;
+      DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+      if (!err) 
+      {
+        timezoneOffset = (long)(doc["dst_offset"] | 0);    // seconds
+        M5.Lcd.printf("offset: %ld ",timezoneOffset);
+        saveLastTimezoneOffset(timezoneOffset);
+        result = true;
+      }
+      else
+      {
+        M5.Lcd.printf("JSON Err: %s",err.c_str());
+      }
+    }
+    else
+    {
+      M5.Lcd.println("Empty JSON");
+    }
+  }
+  else
+  {
+    M5.Lcd.printf("HTTP %d",httpCode);
+  }
+  delay(2000);
+
+  httpLondonTZOffset.end();
+
+  if (!result)
+  {
+    loadLastTimezoneOffset();
+    result = true;
+  }
+
+  return result;
+}
+
+// Warning: Silky with Grasplet SIM has Sofia, Bulgaria external IP location
 bool detectTimezoneFromIP(long& timezoneOffset)
 {
   bool result = false;
@@ -43,19 +140,40 @@ bool detectTimezoneFromIP(long& timezoneOffset)
     return result;
   }
 
-  M5.Lcd.println("Get\nTimezone...\n");
-  
-  // Use ip-api.com for IP-based geolocation (free, no API key needed)
   WiFiClient client;
-  HTTPClient http;
+  HTTPClient httpExtIP;
+  String payload;
+
+  M5.Lcd.println("Ext IP:");
+  httpExtIP.begin(client, "http://api.ipify.org");
+  httpExtIP.setTimeout(10000); // 10 second timeout
   
-  http.begin(client, "http://ip-api.com/json/?fields=timezone,offset");
-  http.setTimeout(10000); // 10 second timeout
+  int httpCode = httpExtIP.GET();
+
+  if (httpCode == HTTP_CODE_OK) 
+  {
+    payload = httpExtIP.getString();
+    if (payload.length() > 0)
+    {
+      M5.Lcd.printf("%s\n",payload.c_str());
+      M5.Lcd.println("???");
+    }
+  }
+  httpExtIP.end();
+  delay(1000);
+
+  HTTPClient httpTZ;
+
+  M5.Lcd.println("TZ:\n");
   
-  int httpCode = http.GET();
+  // Use ip-api.com for IP-based geolocation (free, no API key needed)  
+  httpTZ.begin(client, "http://ip-api.com/json/?fields=timezone,offset");
+  httpTZ.setTimeout(10000); // 10 second timeout
+  
+  httpCode = httpTZ.GET();
   
   if (httpCode == HTTP_CODE_OK) {
-    String payload = http.getString();
+    String payload = httpTZ.getString();
     USB_SERIAL_PRINTF("IP Timezone API response: %s\n", payload.c_str());
     
     // Parse JSON response manually (simple parsing)
@@ -82,7 +200,7 @@ bool detectTimezoneFromIP(long& timezoneOffset)
     M5.Lcd.println("TZ detect failed");
   }
   
-  http.end();
+  httpTZ.end();
   return result;
 }
 

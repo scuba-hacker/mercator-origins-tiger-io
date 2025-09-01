@@ -320,8 +320,10 @@ void drawClockDisplay()
   M5.Lcd.setCursor(35, mode_label_y_offset+28);
   if (otaActive)
   {
+    M5.Lcd.setCursor(35, mode_label_y_offset+18);
     M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-    M5.Lcd.printf("OTA On");
+    M5.Lcd.println("OTA On");
+    M5.Lcd.printf("%s (%ld)",WiFi.localIP().toString().c_str(),latestTimezoneOffset);
   }
   else if (isPairedWithMako && ESPNowActive)
   {
@@ -341,7 +343,7 @@ void drawClockDisplay()
     M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
     M5.Lcd.printf("Paired-");
   }
-  
+
   // Update AXP temperature every 1 second asynchronously
   if (millis() - lastAXPTempUpdateTime >= AXP_TEMP_UPDATE_INTERVAL)
   {
