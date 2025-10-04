@@ -20,14 +20,15 @@ void  initialiseRTCfromNTP()
   if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP\nTime...\n"))
   {
     M5.Lcd.println("NTP Wifi OK");
+    BUFFER_LOG_PRINTLN("NTP Wifi OK");
     delay(500);
 
-    if (hardcodeUKLocation)
+    if (hardcodeUKTimezone)
     {
       useLondonTimezoneOffset(detectedTimezoneOffset);
-      // Second param is offset for timezone (0 for London)
-      // Third param is offset for DST (0 or 3600 for London)
-      updateRTCFromNTP("initialiseRTCfromNTP",0,detectedTimezoneOffset);
+      // Second param is total timezone offset (raw_offset + dst_offset)
+      // Third param is 0 (we don't use separate DST offset)
+      updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
     }
     else
     {
@@ -35,9 +36,9 @@ void  initialiseRTCfromNTP()
       if (!timezoneSetFromIP) 
       {
         if (detectTimezoneFromIP(detectedTimezoneOffset))
-          USB_SERIAL_PRINTF("initialiseFromNTP: calling updateRTCFromNTP detectedTimezoneOffset=%ld\n",detectedTimezoneOffset);
+          BUFFER_LOG_PRINTF("initialiseFromNTP: calling updateRTCFromNTP detectedTimezoneOffset=%ld\n",detectedTimezoneOffset);
         else
-          USB_SERIAL_PRINTLN("initialiseFromNTP: timezone not detected from IP");
+          BUFFER_LOG_PRINTLN("initialiseFromNTP: timezone not detected from IP");
 
         updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
       }
@@ -47,18 +48,15 @@ void  initialiseRTCfromNTP()
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
     M5.Lcd.println("NTP Updated");
+    BUFFER_LOG_PRINTLN("NTP Updated");
     delay(500);
   }
   else
   {
     M5.Lcd.println("NTP Wifi NOT OK");
+    BUFFER_LOG_PRINTLN("NTP Wifi NOT OK");
     delay(1000);
   }
-
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setRotation(0);
-
-  resetClock();
 }
 
 bool useLondonTimezoneOffset(long& timezoneOffset)
@@ -71,6 +69,7 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
   if (WiFi.status() != WL_CONNECTED) 
   {
     timezoneOffset = loadLastTimezoneOffset();
+    BUFFER_LOG_PRINTF("Wifi Not Connected - getting last timezoneoffset from flash: %d\n",timezoneOffset);
     return true;
   }
 
@@ -79,45 +78,66 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
   String payload;
 
   M5.Lcd.println("BST:");
-  httpLondonTZOffset.begin(client, "http://worldtimeapi.org/api/timezone/Europe/London");
+  BUFFER_LOG_PRINTLN("BST:");
+
+  char url[200];
+  snprintf(url, sizeof(url), "http://api.timezonedb.com/v2.1/get-time-zone?key=%s&format=json&by=zone&zone=Europe/London", timezonedb_api_key);
+  httpLondonTZOffset.begin(client, url);
   httpLondonTZOffset.setTimeout(10000); // 10 second timeout
-  
-  int httpCode = httpLondonTZOffset.GET();
+  const int maxAttempts = 5;
+  int attempts = maxAttempts;
+  const uint32_t timeBetweenAttempts = 2000;
 
-  if (httpCode == HTTP_CODE_OK)
+  while (attempts)
   {
-    payload = httpLondonTZOffset.getString();
-    M5.Lcd.println(payload);
+    BUFFER_LOG_PRINTF("api.timezonedb.com: Get timezone offset, attempt %d\n",maxAttempts-attempts+1);
+    int httpCode = httpLondonTZOffset.GET();
 
-    if (payload.length() > 0)
+    if (httpCode == HTTP_CODE_OK)
     {
-      StaticJsonDocument<128> filter;
-      filter["dst_offset"] = true;
+      payload = httpLondonTZOffset.getString();
+      M5.Lcd.println(payload);
 
-      StaticJsonDocument<256> doc;
-      DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
-      if (!err) 
+      if (payload.length() > 0)
       {
-        timezoneOffset = (long)(doc["dst_offset"] | 0);    // seconds
-        M5.Lcd.printf("offset: %ld ",timezoneOffset);
-        saveLastTimezoneOffset(timezoneOffset);
-        result = true;
+        StaticJsonDocument<128> filter;
+        filter["gmtOffset"] = true;
+
+        StaticJsonDocument<256> doc;
+        DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
+        if (!err)
+        {
+          long gmtOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
+          timezoneOffset = -gmtOffset;                      // negate because configTime negates it again
+          M5.Lcd.printf("offset:%ld ",timezoneOffset);
+          BUFFER_LOG_PRINTF("offset:%ld ",timezoneOffset);
+
+          saveLastTimezoneOffset(timezoneOffset);
+          result = true;
+          break;
+        }
+        else
+        {
+          M5.Lcd.printf("JSON Err: %s",err.c_str());
+          BUFFER_LOG_PRINTF("JSON Err: %s",err.c_str());
+        }
       }
       else
       {
-        M5.Lcd.printf("JSON Err: %s",err.c_str());
+        M5.Lcd.println("Empty JSON");
+        BUFFER_LOG_PRINTLN("Empty JSON");
       }
     }
     else
     {
-      M5.Lcd.println("Empty JSON");
+      M5.Lcd.printf("HTTP %d ",httpCode);
+      BUFFER_LOG_PRINTF("HTTP %d ",httpCode);
     }
+    attempts--;
+    delay(timeBetweenAttempts);
   }
-  else
-  {
-    M5.Lcd.printf("HTTP %d",httpCode);
-  }
-  delay(2000);
+
+  delay(1000);
 
   httpLondonTZOffset.end();
 
@@ -262,8 +282,11 @@ bool detectTimezoneFromGPS(double lat, double lon)
 bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
 {
   bool ntpSuccess = false;
-  
+
   const uint8_t max_NTP_connect_attempts=10;
+
+  USB_SERIAL_PRINTF("%s: configTime called with timezoneOffset=%ld, dstOffset=%d\n", context, timezoneOffset, dstOffset);
+  BUFFER_LOG_PRINTF("%s: configTime called with timezoneOffset=%ld, dstOffset=%d\n", context, timezoneOffset, dstOffset);
 
   for (uint8_t i=0; i<max_NTP_connect_attempts; i++)
   {
@@ -272,6 +295,7 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
     
     if (getLocalTime(&timeinfo)) {
       USB_SERIAL_PRINTF("%s: RTC being updated with corrected time\n", context);
+      BUFFER_LOG_PRINTF("%s: RTC being updated with corrected time\n", context);
 
       // Update RTC with corrected time
       RTC_TimeTypeDef TimeStruct;
@@ -287,13 +311,15 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
       DateStruct.WeekDay = timeinfo.tm_wday;
       M5.Rtc.SetDate(&DateStruct);
       
-      USB_SERIAL_PRINTF("%s: RTC updated with timezone-corrected time\n", context);
+      USB_SERIAL_PRINTF("%s: RTC updated with timezone-corrected time %02d-%02d-%04d %02d:%02d:%02d\n", context, DateStruct.Date, DateStruct.Month, DateStruct.Year, TimeStruct.Hours, TimeStruct.Minutes, TimeStruct.Seconds);
+      BUFFER_LOG_PRINTF("%s: RTC updated with timezone-corrected time %02d-%02d-%04d %02d:%02d:%02d\n", context, DateStruct.Date, DateStruct.Month, DateStruct.Year, TimeStruct.Hours, TimeStruct.Minutes, TimeStruct.Seconds);
       ntpSuccess = true;
       break;
     }
     else
     {
       USB_SERIAL_PRINTLN("No time available (yet)");
+      BUFFER_LOG_PRINTLN("No time available (yet)");
       // Let RTC continue with existing settings
       M5.Lcd.println("Wait for NTP Time\n");
       delay(500);
@@ -304,12 +330,14 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
   {
     USB_SERIAL_PRINTLN("NTP time received");
     M5.Lcd.printf("RTC set (UTC%+d)\n", ((int)(timezoneOffset + int(dstOffset))/3600));
+    BUFFER_LOG_PRINTF("RTC set (UTC%+d)\n", ((int)(timezoneOffset + int(dstOffset))/3600));
     delay(300);
   }
   else
   {      
     // Let RTC continue with existing settings
     M5.Lcd.println("No NTP Server\n");
+    BUFFER_LOG_PRINTLN("No NTP Server\n");
   }
 
   return ntpSuccess;

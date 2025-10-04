@@ -178,7 +178,7 @@ const char* ntpServer = "pool.ntp.org";
 bool timezoneSetFromIP = false;
 bool timezoneVerifiedFromGPS = false;
 long detectedTimezoneOffset = 0;
-bool hardcodeUKLocation = true;    // timezone offset needs to be done by GPS Fix as Silky Grasplet has Sofia IP
+bool hardcodeUKTimezone = true;    // timezone offset needs to be done by GPS Fix as Grasplet SIM has Sofia, Romania! IP
 
 RTC_TimeTypeDef RTC_TimeStruct;
 
@@ -347,6 +347,8 @@ void setup()
   if (systemStartupAndCheckForOTADemand())
     return;     // OTA Required, skip rest of setup.
   
+  BUFFER_LOG_RESET();
+  
   readPreferencesFromEEPROM();
 
   // persistedPreferences.putLong("tz_offset", 3600);
@@ -365,20 +367,17 @@ void setup()
   espNOW_msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
   if (espNOW_msgsReceivedQueue == nullptr)
-    USB_SERIAL_PRINTLN("Failed to create queue");
+    BUFFER_LOG_PRINTLN("Failed to create queue");
   else
-    USB_SERIAL_PRINTLN("Created msg queue");
-
-  if (espNOW_msgsReceivedQueue)
-  {
-    M5.Lcd.println("Created msg queue");
-  }
+    BUFFER_LOG_PRINTLN("Created msg queue");
 
   setPrimaryControls(reedSwitchesPrimaryControl);
 
   M5.Lcd.setTextSize(2);
 
   initialiseRTCfromNTP();
+
+  resetClock();
 
   if (enableESPNow && espNOW_msgsReceivedQueue)
   {

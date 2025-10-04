@@ -120,6 +120,7 @@ void resetMap()
 
 void resetClock()
 {
+  M5.Lcd.setRotation(0);
   M5.Lcd.fillScreen(BLACK);
   display_mode = DISPLAY_CLOCK;
 }

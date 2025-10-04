@@ -100,6 +100,8 @@ void disableFeaturesForOTA(bool screenToRed=true)
 
 bool systemStartupAndCheckForOTADemand()
 {
+  delay(750); // avoid all MCU starting simultaneously to avoid power spikes
+  
   M5.begin();
 
   readPreferencesFromEEPROM();
@@ -478,14 +480,56 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
     saveLastConnectedSSID(_ssid);
     if (wifiOnly == false && !otaActive)
     {
-      asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
-        request->send(200, "text/plain", "To upload firmware use /update");
+      asyncWebServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request)
+      {
+        request->send(200, "text/plain", "To upload firmware use /update. For buffer log /buffer-log or /reset-buffer-log. For USB logs /logs");
       });
+
+      auto bufferResetHandler = [](AsyncWebServerRequest * request)
+      {
+        BUFFER_LOG_RESET();
+        request->send(200, "text/plain", "Buffer Log Reset");
+      };
+
+      asyncWebServer.on("/reset-buffer-log", HTTP_GET, bufferResetHandler);
+      asyncWebServer.on("/buffer-log-reset", HTTP_GET, bufferResetHandler);
+      asyncWebServer.on("/buffer-reset", HTTP_GET, bufferResetHandler);
 
       asyncWebServer.on("/logs", HTTP_GET, [](AsyncWebServerRequest * request) {
         request->send_P(200, "text/html", LOGS_PAGE_HTML);
       });
         
+      asyncWebServer.on("/buffer-log", HTTP_GET, [](AsyncWebServerRequest * request)
+      {
+        AsyncWebServerResponse *response = request->beginChunkedResponse("text/txt", [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t 
+        {
+          static uint16_t currentByteForCompleteResponse = 0;
+
+          // Reset on first chunk
+          if (index == 0)
+            currentByteForCompleteResponse = 0;
+
+          size_t written = 0;
+
+          int max_buffer_log_size = BUFFER_LOG_SIZE;
+          int log_length = BUFFER_LOG_GET_LENGTH();
+          const char* buffer_log = BUFFER_LOG_GET_BUFFER();
+
+          if (currentByteForCompleteResponse >= log_length)
+            return 0;
+
+          int bytes_to_copy = (currentByteForCompleteResponse + maxLen > log_length ? log_length - currentByteForCompleteResponse : maxLen);
+
+          memcpy(buffer, buffer_log+currentByteForCompleteResponse, bytes_to_copy);
+          written += bytes_to_copy;
+          currentByteForCompleteResponse += written;
+
+          return written;
+        });
+
+        request->send(response);
+      });
+      
       AsyncElegantOTA.setID(MERCATOR_OTA_DEVICE_LABEL);
       AsyncElegantOTA.setUploadBeginCallback(uploadOTABeginCallback);
       AsyncElegantOTA.setUploadProgressCallback(uploadOTAProgressCallback);
