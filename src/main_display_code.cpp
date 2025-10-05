@@ -275,7 +275,8 @@ void drawCurrentTargetDisplay()
     if (targetValid)
     {
       M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-      ypos+=M5.Lcd.drawString("Towards",centre,ypos);
+      M5.Lcd.drawString("Towards",centre,ypos);
+      ypos+=lineHeight;
     }
 
     M5.Lcd.setTextColor(TFT_YELLOW,TFT_BLACK);
