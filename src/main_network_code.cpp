@@ -184,7 +184,6 @@ bool cutShortLoopOnOTADemand()
     if (millis() > OTAUploadFlashLEDTimer)
     {
       OTAUploadFlashLEDTimer += OTAUploadFlashCurrentLEDPeriodicity;
-      toggleRedLED();
     }
 
     // After 5 seconds of recovery screen, allow restart if any reed 
