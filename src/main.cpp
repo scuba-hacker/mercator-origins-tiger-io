@@ -2,7 +2,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
