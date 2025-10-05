@@ -201,15 +201,13 @@ bool checkReedSwitches()
 
     TeardownESPNow();
     isPairedWithMako = false;
-
+    clockSprite->deleteSprite();
+    
     // enable OTA
     const bool wifiOnly = false;
     M5.Lcd.fillScreen(TFT_BLACK);
     const int maxWifiScanAttempts = 3;
     connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
-
-    delete clockSprite;
-    clockSprite = nullptr;
 
     changeMade = true;
     const bool refreshCurrentScreen=true;

@@ -33,7 +33,11 @@ extern bool writeLogToSerial;
 
 // Configuration - adjust buffer size as needed
 #ifndef BUFFER_LOG_SIZE
-#define BUFFER_LOG_SIZE 20480  // 20KB default buffer size
+    #ifdef ENABLE_LARGE_BUFFER_LOG
+        #define BUFFER_LOG_SIZE 20480  // 20KB
+    #else
+        #define BUFFER_LOG_SIZE 1024   // 1KB
+    #endif
 #endif
 
 // Static buffer logging implementation

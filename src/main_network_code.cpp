@@ -73,6 +73,8 @@ void disableFeaturesForOTA(bool screenToRed=true)
   if (mapScreen.get())
     mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
+  clockSprite->deleteSprite();
+  
   // Don't close WebSerial connections - we want the /logs page to work
   // WebSerial.closeAll();   // close all websocket connetions for WebSerial
   

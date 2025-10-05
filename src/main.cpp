@@ -6,9 +6,12 @@ bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick phys
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
-bool writeLogToSerial=true;
+bool writeLogToSerial=false;
 
-bool disableNTPAtStartupforDevelopment = true;   // make true for faster startup when developing
+bool disableNTPAtStartupforDevelopment = false;   // make true for faster startup when developing
+
+// disabled
+//#define ENABLE_LARGE_BUFFER_LOG      // enable to give 20KB allocation to buffer log. When disabled, only 1KB allocated.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -348,7 +351,7 @@ void dumpHeapUsage(const char* msg)
   }
 }
 
-TFT_eSprite* clockSprite;
+std::shared_ptr<TFT_eSprite> clockSprite;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////// PROTECTED - DO NOT ADD CODE IN THE ABOVE PROTECTED AREA - RISK OF OTA FAILURE
@@ -361,12 +364,10 @@ void setup()
   
   BUFFER_LOG_RESET();
   
-  clockSprite = new TFT_eSprite(&M5.Lcd);
+  clockSprite = std::make_shared<TFT_eSprite>(&M5.Lcd);
   clockSprite->createSprite(135, 170);
 
   readPreferencesFromEEPROM();
-
-  // persistedPreferences.putLong("tz_offset", 3600);
 
   strncpy(previousTarget,"None",sizeof(previousTarget));
   strncpy(currentTarget,"No\nTarget\nSet\nFrom\nMako",sizeof(currentTarget));

@@ -313,41 +313,39 @@ uint16_t drawSmoothDigits(int h1, int h2, int i1, int i2, int s1, int s2)
 {
   int16_t xpos = 0, ypos = 0;
 
-  if (clockSprite)
+  char digits[4];
+
+  const uint8_t hoursMinsTextSize=2;
+  const uint8_t hoursMinsTextFont=6;
+
+  clockSprite->fillSprite(TFT_BLACK);
+  clockSprite->setTextSize(hoursMinsTextSize);
+  clockSprite->setTextColor(TFT_ORANGE);
+
+  snprintf(digits,sizeof(digits),"%02d:",h1*10+h2);
+  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+  ypos += clockSprite->fontHeight(hoursMinsTextFont)-20;
+
+  snprintf(digits,sizeof(digits),"%02d",i1*10+i2);
+  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+  ypos += clockSprite->fontHeight(hoursMinsTextFont)-28;
+
+  if (s1 != -1 && s2 != -1)
   {
-    char digits[4];
+    const uint8_t secondsTextSize=2;
+    const uint8_t secondsTextFont=2;
 
-    const uint8_t hoursMinsTextSize=2;
-    const uint8_t hoursMinsTextFont=6;
-
-    clockSprite->fillSprite(TFT_BLACK);
-    clockSprite->setTextSize(hoursMinsTextSize);
-    clockSprite->setTextColor(TFT_ORANGE);
-
-    snprintf(digits,sizeof(digits),"%02d:",h1*10+h2);
-    clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
-    ypos += clockSprite->fontHeight(hoursMinsTextFont)-20;
-
-    snprintf(digits,sizeof(digits),"%02d",i1*10+i2);
-    clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
-    ypos += clockSprite->fontHeight(hoursMinsTextFont)-28;
-
-    if (s1 != -1 && s2 != -1)
-    {
-      const uint8_t secondsTextSize=2;
-      const uint8_t secondsTextFont=2;
-
-      clockSprite->setTextSize(secondsTextSize);
-      clockSprite->setTextDatum(TL_DATUM);
-      xpos = 100;
-      snprintf(digits,sizeof(digits),"%02d",s1*10+s2);
-      clockSprite->drawString(digits, xpos, ypos,secondsTextFont);
-    }
-
-    clockSprite->pushSprite(0,0);
-    
-    ypos = clockSprite->height()+30;
+    clockSprite->setTextSize(secondsTextSize);
+    clockSprite->setTextDatum(TL_DATUM);
+    xpos = 100;
+    snprintf(digits,sizeof(digits),"%02d",s1*10+s2);
+    clockSprite->drawString(digits, xpos, ypos,secondsTextFont);
   }
+
+  clockSprite->pushSprite(0,0);
+  
+  ypos = clockSprite->height()+30;
+
   return ypos;
 }
 
