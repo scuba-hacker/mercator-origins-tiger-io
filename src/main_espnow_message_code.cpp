@@ -80,9 +80,9 @@ void processIncomingESPNowMessages()
             heading = static_cast<int>((old_heading + 5)) % 360;
           }
 
-          if (display_mode == 6) // map on screen
+          if (display_mode == DISPLAY_MAP) // map on screen
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
-          else if (display_mode == 5 && refreshTargetShown)
+          else if (display_mode == DISPLAY_CURRENT_TARGET && refreshTargetShown)
             resetCurrentTarget();
         }
         default:
