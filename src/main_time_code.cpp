@@ -137,8 +137,6 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
     delay(timeBetweenAttempts);
   }
 
-  delay(1000);
-
   httpLondonTZOffset.end();
 
   if (!result)
@@ -180,7 +178,6 @@ bool detectTimezoneFromIP(long& timezoneOffset)
     }
   }
   httpExtIP.end();
-  delay(1000);
 
   HTTPClient httpTZ;
 

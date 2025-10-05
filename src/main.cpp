@@ -29,6 +29,7 @@ Sofia, Bulgaria
 
 #include <M5StickCPlus.h>
 #include <MapScreen_M5.h>
+#include <TFT_eSPI.h>
 
 #include <WebSerial.h>
 #include "SerialConfig.h"
@@ -232,8 +233,8 @@ void drawDisplay();
 void drawMapDisplay();
 void drawPodControlsEnabledDisplay();
 void getTime(char* time);
-void drawDigits(int h1, int h2, int i1, int i2, int s1, int s2);
-void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2);
+uint16_t drawSmoothDigits(int h1, int h2, int i1, int i2, int s1, int s2);
+uint16_t drawBlockyDigits(int h1, int h2, int i1, int i2, int s1, int s2);
 void resetCurrentTarget();
 void resetMap();
 void resetClock();
@@ -259,7 +260,13 @@ bool leakAlarmFlashOn = false;
 
 // Display update timing
 uint32_t lastDisplayUpdateTime = 0;
-const uint32_t DISPLAY_UPDATE_INTERVAL = 100;
+const uint32_t DEFAULT_DISPLAY_UPDATE_INTERVAL = 400;
+const uint32_t MAP_DISPLAY_UPDATE_INTERVAL = 100;
+
+uint32_t getDisplayUpdateInterval()
+{
+  return (DISPLAY_MAP ? MAP_DISPLAY_UPDATE_INTERVAL : DEFAULT_DISPLAY_UPDATE_INTERVAL);
+}
 
 // AXP temperature update timing
 uint32_t lastAXPTempUpdateTime = 0;
@@ -338,6 +345,8 @@ void dumpHeapUsage(const char* msg)
   }
 }
 
+TFT_eSprite* clockSprite;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////// PROTECTED - DO NOT ADD CODE IN THE ABOVE PROTECTED AREA - RISK OF OTA FAILURE
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -349,6 +358,9 @@ void setup()
   
   BUFFER_LOG_RESET();
   
+  clockSprite = new TFT_eSprite(&M5.Lcd);
+  clockSprite->createSprite(135, 170);
+
   readPreferencesFromEEPROM();
 
   // persistedPreferences.putLong("tz_offset", 3600);
@@ -405,7 +417,7 @@ void loop()
   processIncomingESPNowMessages();
   
   // Update display every 100ms asynchronously (but not during leak alarm flash sequence)
-  if (millis() - lastDisplayUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash)
+  if (millis() - lastDisplayUpdateTime >= getDisplayUpdateInterval() && !leakAlarmInInitialFlash)
   {
     lastDisplayUpdateTime = millis();
     drawDisplay();

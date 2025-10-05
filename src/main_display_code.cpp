@@ -6,7 +6,6 @@ extern float cachedAXPTemperature;
 // External reference to leak alarm state
 extern bool leakAlarmCurrentlyShowing;
 
-
 void checkForLeak(const char* msg)
 {
   // Handle asynchronous leak alarm flash sequence with dual-tone pattern
@@ -269,13 +268,47 @@ void drawCurrentTargetDisplay()
   M5.Lcd.printf("%s",currentTime);  
 }
 
-void drawDigits(int h1, int h2, int i1, int i2, int s1, int s2)
+uint16_t drawSmoothDigits(int h1, int h2, int i1, int i2, int s1, int s2)
 {
-  drawDigitText(h1,h2,i1,i2,s1,s2);
+  char digits[4];
+
+  const uint8_t hoursMinsTextSize=2;
+  const uint8_t hoursMinsTextFont=6;
+
+  clockSprite->fillSprite(TFT_BLACK);
+  clockSprite->setTextSize(hoursMinsTextSize);
+  clockSprite->setTextColor(TFT_ORANGE);
+
+  int16_t xpos = 0, ypos = 0;
+
+  snprintf(digits,sizeof(digits),"%02d:",h1*10+h2);
+  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+  ypos += clockSprite->fontHeight(hoursMinsTextFont)-20;
+
+  snprintf(digits,sizeof(digits),"%02d",i1*10+i2);
+  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+  ypos += clockSprite->fontHeight(hoursMinsTextFont)-28;
+
+  if (s1 != -1 && s2 != -1)
+  {
+    const uint8_t secondsTextSize=2;
+    const uint8_t secondsTextFont=2;
+
+    clockSprite->setTextSize(secondsTextSize);
+    clockSprite->setTextDatum(TL_DATUM);
+    xpos = 100;
+    snprintf(digits,sizeof(digits),"%02d",s1*10+s2);
+    clockSprite->drawString(digits, xpos, ypos,secondsTextFont);
+  }
+
+  clockSprite->pushSprite(0,0);
+  
+  ypos = clockSprite->height()+30;
+
+  return ypos;
 }
 
-
-void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2)
+uint16_t drawBlockDigits(int h1, int h2, int i1, int i2, int s1, int s2)
 {
   M5.Lcd.setTextSize(9);
   M5.Lcd.setTextFont(0);
@@ -301,6 +334,7 @@ void drawDigitText(int h1, int h2, int i1, int i2, int s1, int s2)
     M5.Lcd.setCursor(50, 120);
     M5.Lcd.printf("%d%d", s1, s2);
   }
+  return M5.Lcd.getCursorY() + M5.Lcd.fontHeight()*4;
 }
 
 void drawClockDisplay()
@@ -314,37 +348,59 @@ void drawClockDisplay()
   int s1 = int(RTC_TimeStruct.Seconds / 10 );
   int s2 = int(RTC_TimeStruct.Seconds - s1*10 );
 
-  drawDigits(h1, h2, i1, i2, s1, s2);
+  uint16_t ypos = drawSmoothDigits(h1, h2, i1, i2, s1, s2);
 
   M5.Lcd.setTextSize(2);
-    
-  M5.Lcd.setCursor(35, mode_label_y_offset+28);
+  
+  char espLabel[32];
+
   if (otaActive)
   {
-    M5.Lcd.setCursor(35, mode_label_y_offset+18);
     M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
-    M5.Lcd.println("OTA On");
-    M5.Lcd.printf("%s (%ld)",WiFi.localIP().toString().c_str(),latestTimezoneOffset);
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setTextDatum(BC_DATUM);
+    ypos+=M5.Lcd.fontHeight(2);
+    M5.Lcd.drawString("OTA On",M5.Lcd.width()/2,ypos,4);
+    ypos+=M5.Lcd.fontHeight() + 5;
+    M5.Lcd.drawString(WiFi.localIP().toString().c_str(),M5.Lcd.width()/2,ypos,2);
   }
-  else if (isPairedWithMako && ESPNowActive)
+  else if (ESPNowActive)
   {
-    M5.Lcd.setCursor(25, mode_label_y_offset+28);
-    M5.Lcd.setCursor(5, mode_label_y_offset+28);
     M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);    
-    if (!pingReceivedFromMako)
-      M5.Lcd.printf("ESP+ %i", attemptSendPingResponseToMako);
-    else if (pingReceivedFromMako % 2)
-      M5.Lcd.printf("Esp/ %i", attemptSendPingResponseToMako);
-    else
-      M5.Lcd.printf("Esp\\ %i", attemptSendPingResponseToMako);
-  }
-  else if (!isPairedWithMako)
-  {
-    M5.Lcd.setCursor(25, mode_label_y_offset+28);
-    M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-    M5.Lcd.printf("Paired-");
-  }
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setTextDatum(BC_DATUM);
+    ypos+=M5.Lcd.fontHeight(2)*2;
 
+    const bool overrideESPLabel = false;
+    if (overrideESPLabel)
+    {
+      multi_heap_info_t info;
+      heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT); // internal RAM, memory capable to store data or to create new task
+      snprintf(espLabel,sizeof(espLabel),"fr: %i",info.total_free_bytes);
+    }
+    else
+    {
+      if (isPairedWithMako)
+      {
+        if (!pingReceivedFromMako)
+          snprintf(espLabel,sizeof(espLabel),"ESP+ %i",attemptSendPingResponseToMako);
+        else if (pingReceivedFromMako % 2)
+          snprintf(espLabel,sizeof(espLabel),"ESP/ %i",attemptSendPingResponseToMako);
+        else
+          snprintf(espLabel,sizeof(espLabel),"ESP\\ %i",attemptSendPingResponseToMako);
+      }
+      else
+      {
+        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+        snprintf(espLabel,sizeof(espLabel),"ESP-      ");
+      }
+    }
+   
+    M5.Lcd.drawString(espLabel,M5.Lcd.width()/2,ypos,4);
+  }
+  M5.Lcd.setTextDatum(TL_DATUM);
+
+  /*
   // Update AXP temperature every 1 second asynchronously
   if (millis() - lastAXPTempUpdateTime >= AXP_TEMP_UPDATE_INTERVAL)
   {
@@ -356,6 +412,7 @@ void drawClockDisplay()
   M5.Lcd.setCursor(5, 130);  // x=5 (left of seconds at x=50), y=120 (same as seconds)
   M5.Lcd.setTextColor(TFT_MAGENTA, TFT_BLACK);
   M5.Lcd.printf("%.0fC", cachedAXPTemperature);
+  */
 }
 
 void displayReedActivationIndicators()
@@ -364,13 +421,13 @@ void displayReedActivationIndicators()
   int pressedPrimaryButtonX, pressedPrimaryButtonY, pressedSecondButtonX, pressedSecondButtonY;
 
   pressedPrimaryButtonX = 110;
-  pressedPrimaryButtonY = 65; 
+  pressedPrimaryButtonY = 210; 
 
   pressedSecondButtonX = 5;
   pressedSecondButtonY = 210;
     
   // Update button indicators at the same rate as display (100ms) to prevent overwriting
-  if (millis() - lastButtonIndicatorUpdateTime >= DISPLAY_UPDATE_INTERVAL && !leakAlarmInInitialFlash && !leakAlarmCurrentlyShowing)
+  if (millis() - lastButtonIndicatorUpdateTime >= getDisplayUpdateInterval() && !leakAlarmInInitialFlash && !leakAlarmCurrentlyShowing)
   {
     lastButtonIndicatorUpdateTime = millis();
     
