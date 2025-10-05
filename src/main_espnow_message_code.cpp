@@ -19,6 +19,7 @@ void processIncomingESPNowMessages()
             strncpy(previousTarget,currentTarget,sizeof(previousTarget));
             strncpy(currentTarget,rxQueueItemBuffer+1,sizeof(currentTarget));
             refreshTargetShown = true;
+            targetValid = true;
           }
           break;
         }
@@ -55,6 +56,7 @@ void processIncomingESPNowMessages()
             strncpy(previousTarget,currentTarget,sizeof(previousTarget));
             strncpy(currentTarget,rxQueueItemBuffer+currentTargetOffset,sizeof(currentTarget));
             refreshTargetShown = true;
+            targetValid = true;
           }
 
           USB_SERIAL_PRINTF("targetCode: %s\n",targetCode);

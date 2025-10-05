@@ -209,6 +209,44 @@ void drawPodControlsEnabledDisplay()
    drawDisplay();
 }
 
+uint16_t drawMultiString(const char* source, const uint16_t xpos, uint16_t ypos, const uint16_t lineHeight)
+{
+  char line[32];
+  const int maxLines = 10;
+  int lines = 0;
+
+  uint16_t originalYpos = ypos;
+
+  char* draw = line;
+  line[0]='\0';
+
+  const char* next=source; 
+  while (*next && lines < maxLines)
+  {
+    while (*next && *next != '\n')
+      *draw++ = *next++;
+
+    if (*next == '\n')
+      next++;
+
+    if (draw      != line &&    // must not be empty string
+        *(draw-1) == '\n')      // if previous char a newline, then substitutes a null terminator in place of the newline
+        *(draw-1) = '\0';
+    else
+      *draw = '\0';             // otherwise appends null terminator.
+
+    if (*line != '\0')
+    {
+      M5.Lcd.drawString(line,xpos,ypos);
+      ypos += lineHeight;
+    }
+    draw = line;
+    lines++;
+  }
+
+  return ypos - originalYpos;
+}
+
 void drawCurrentTargetDisplay()
 {
   if (refreshTargetShown)
@@ -216,95 +254,100 @@ void drawCurrentTargetDisplay()
     M5.Lcd.fillScreen(TFT_BLACK);
     refreshTargetShown = false;
   }
+  bool targetLive = false;
+
+  const uint8_t textSize=1;
+  const uint8_t textFont=4;
+
+  uint8_t oldFont = M5.Lcd.textfont;
+  uint8_t oldSize = M5.Lcd.textsize;
+
+  M5.Lcd.setTextSize(textSize);
+  M5.Lcd.setTextFont(textFont);
+  uint16_t ypos = 0, centre = M5.Lcd.width() / 2;
+
+  M5.Lcd.setTextDatum(TC_DATUM);
+
+  uint16_t lineHeight = 28;
 
   if (ESPNowActive && isPairedWithMako)
   {    
-    M5.Lcd.setCursor(0,0);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_YELLOW,TFT_BLACK);
-    M5.Lcd.println(currentTarget);
-  }
-  else
-  {
-    M5.Lcd.setCursor(0,0);
-    M5.Lcd.setTextSize(3);
-    M5.Lcd.setTextColor(TFT_RED,TFT_BLACK);
-
-    if (!ESPNowActive)
-      M5.Lcd.println("  No\nTarget\n\nESPNow\nIs Off\n");
-    else
-      M5.Lcd.println("  No\nTarget\n\nESPNow\nNo Pair\n");
-    
-    if (otaActive)
+    if (targetValid)
     {
-      M5.Lcd.setTextColor(TFT_GREEN,TFT_BLACK);
-      M5.Lcd.println("OTA On\n");        
+      M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+      ypos+=M5.Lcd.drawString("Towards",centre,ypos);
     }
-    else
-    { 
-      M5.Lcd.println("OTA Off\n");
-    }
-  }
 
-  if (otaActive)
-  {
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.setCursor(0, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-    M5.Lcd.printf("%s",WiFi.localIP().toString());
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.println("");
-    M5.Lcd.setTextSize(3);
+    M5.Lcd.setTextColor(TFT_YELLOW,TFT_BLACK);
+    ypos += drawMultiString(currentTarget, centre, ypos, lineHeight);
   }
   else
   {
-    M5.Lcd.setCursor(0, mode_label_y_offset+10);
-    M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
-    M5.Lcd.println("Towards");
-  }  
-  M5.Lcd.setCursor(28, mode_label_y_offset+38);
+    const char* noTarget = "No\nTarget\n \nESP-Now\n";
+    const char* noPair = "No\nPair";
+    const char* isOff = "Is\nOff";
+   
+    M5.Lcd.setTextColor(TFT_RED,TFT_BLACK);
+    ypos += drawMultiString(noTarget, centre, ypos, lineHeight);
+
+    if (ESPNowActive)
+      ypos += drawMultiString(noPair, centre, ypos, lineHeight);
+    else
+      ypos += drawMultiString(isOff, centre, ypos, lineHeight);
+  }
+
+  ypos = TFT_HEIGHT;
   M5.Lcd.setTextColor(TFT_ORANGE, TFT_BLACK);
+  M5.Lcd.setTextDatum(BC_DATUM);
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setTextFont(6);
   getTime(currentTime);
-  M5.Lcd.printf("%s",currentTime);  
+  ypos+=M5.Lcd.drawString(currentTime,centre,ypos);
+  
+  M5.Lcd.setTextDatum(BL_DATUM);
+  M5.Lcd.setTextSize(oldSize);
+  M5.Lcd.setTextFont(oldFont);
 }
 
 uint16_t drawSmoothDigits(int h1, int h2, int i1, int i2, int s1, int s2)
 {
-  char digits[4];
-
-  const uint8_t hoursMinsTextSize=2;
-  const uint8_t hoursMinsTextFont=6;
-
-  clockSprite->fillSprite(TFT_BLACK);
-  clockSprite->setTextSize(hoursMinsTextSize);
-  clockSprite->setTextColor(TFT_ORANGE);
-
   int16_t xpos = 0, ypos = 0;
 
-  snprintf(digits,sizeof(digits),"%02d:",h1*10+h2);
-  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
-  ypos += clockSprite->fontHeight(hoursMinsTextFont)-20;
-
-  snprintf(digits,sizeof(digits),"%02d",i1*10+i2);
-  clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
-  ypos += clockSprite->fontHeight(hoursMinsTextFont)-28;
-
-  if (s1 != -1 && s2 != -1)
+  if (clockSprite)
   {
-    const uint8_t secondsTextSize=2;
-    const uint8_t secondsTextFont=2;
+    char digits[4];
 
-    clockSprite->setTextSize(secondsTextSize);
-    clockSprite->setTextDatum(TL_DATUM);
-    xpos = 100;
-    snprintf(digits,sizeof(digits),"%02d",s1*10+s2);
-    clockSprite->drawString(digits, xpos, ypos,secondsTextFont);
+    const uint8_t hoursMinsTextSize=2;
+    const uint8_t hoursMinsTextFont=6;
+
+    clockSprite->fillSprite(TFT_BLACK);
+    clockSprite->setTextSize(hoursMinsTextSize);
+    clockSprite->setTextColor(TFT_ORANGE);
+
+    snprintf(digits,sizeof(digits),"%02d:",h1*10+h2);
+    clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+    ypos += clockSprite->fontHeight(hoursMinsTextFont)-20;
+
+    snprintf(digits,sizeof(digits),"%02d",i1*10+i2);
+    clockSprite->drawString(digits, xpos,ypos,hoursMinsTextFont);
+    ypos += clockSprite->fontHeight(hoursMinsTextFont)-28;
+
+    if (s1 != -1 && s2 != -1)
+    {
+      const uint8_t secondsTextSize=2;
+      const uint8_t secondsTextFont=2;
+
+      clockSprite->setTextSize(secondsTextSize);
+      clockSprite->setTextDatum(TL_DATUM);
+      xpos = 100;
+      snprintf(digits,sizeof(digits),"%02d",s1*10+s2);
+      clockSprite->drawString(digits, xpos, ypos,secondsTextFont);
+    }
+
+    clockSprite->pushSprite(0,0);
+    
+    ypos = clockSprite->height()+30;
   }
-
-  clockSprite->pushSprite(0,0);
-  
-  ypos = clockSprite->height()+30;
-
   return ypos;
 }
 
@@ -358,11 +401,9 @@ void drawClockDisplay()
   {
     M5.Lcd.setTextColor(TFT_YELLOW, TFT_BLACK);
     M5.Lcd.setTextSize(1);
-    M5.Lcd.setTextDatum(BC_DATUM);
-    ypos+=M5.Lcd.fontHeight(2);
-    M5.Lcd.drawString("OTA On",M5.Lcd.width()/2,ypos,4);
-    ypos+=M5.Lcd.fontHeight() + 5;
-    M5.Lcd.drawString(WiFi.localIP().toString().c_str(),M5.Lcd.width()/2,ypos,2);
+    M5.Lcd.setTextDatum(TC_DATUM);
+    ypos+=M5.Lcd.drawString("OTA On",M5.Lcd.width()/2,ypos,4);
+    ypos+=M5.Lcd.drawString(WiFi.localIP().toString().c_str(),M5.Lcd.width()/2,ypos,2);
   }
   else if (ESPNowActive)
   {

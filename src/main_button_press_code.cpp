@@ -208,6 +208,9 @@ bool checkReedSwitches()
     const int maxWifiScanAttempts = 3;
     connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
 
+    delete clockSprite;
+    clockSprite = nullptr;
+
     changeMade = true;
     const bool refreshCurrentScreen=true;
     cycleDisplays(refreshCurrentScreen);

@@ -21,7 +21,7 @@ void  initialiseRTCfromNTP()
   {
     M5.Lcd.println("NTP Wifi OK");
     BUFFER_LOG_PRINTLN("NTP Wifi OK");
-    delay(500);
+    delay(250);
 
     if (hardcodeUKTimezone)
     {
@@ -49,7 +49,7 @@ void  initialiseRTCfromNTP()
     WiFi.mode(WIFI_OFF);
     M5.Lcd.println("NTP Updated");
     BUFFER_LOG_PRINTLN("NTP Updated");
-    delay(500);
+    delay(250);
   }
   else
   {
@@ -319,7 +319,7 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
       BUFFER_LOG_PRINTLN("No time available (yet)");
       // Let RTC continue with existing settings
       M5.Lcd.println("Wait for NTP Time\n");
-      delay(500);
+      delay(250);
     }
   }
 
@@ -328,7 +328,7 @@ bool updateRTCFromNTP(const char* context,long timezoneOffset, int dstOffset)
     USB_SERIAL_PRINTLN("NTP time received");
     M5.Lcd.printf("RTC set (UTC%+d)\n", ((int)(timezoneOffset + int(dstOffset))/3600));
     BUFFER_LOG_PRINTF("RTC set (UTC%+d)\n", ((int)(timezoneOffset + int(dstOffset))/3600));
-    delay(300);
+    delay(200);
   }
   else
   {      

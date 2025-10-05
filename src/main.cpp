@@ -2,11 +2,13 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
-bool writeLogToSerial=false;
+bool writeLogToSerial=true;
+
+bool disableNTPAtStartupforDevelopment = true;   // make true for faster startup when developing
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -205,6 +207,7 @@ const uint8_t queueLength=4;
 
 char currentTarget[128];
 char previousTarget[128];
+bool targetValid = false;
 bool refreshTargetShown = false;
 
 const float minimumUSBVoltage=2.0;
@@ -366,7 +369,7 @@ void setup()
   // persistedPreferences.putLong("tz_offset", 3600);
 
   strncpy(previousTarget,"None",sizeof(previousTarget));
-  strncpy(currentTarget,"  No\nTarget\n  Set\n From\n Mako",sizeof(currentTarget));
+  strncpy(currentTarget,"No\nTarget\nSet\nFrom\nMako",sizeof(currentTarget));
 
   pinMode(UNUSED_GPIO_36_PIN,INPUT);
 
@@ -387,7 +390,8 @@ void setup()
 
   M5.Lcd.setTextSize(2);
 
-  initialiseRTCfromNTP();
+  if (!disableNTPAtStartupforDevelopment)
+    initialiseRTCfromNTP();
 
   resetClock();
 
