@@ -175,6 +175,11 @@ std::unique_ptr<MapScreen_M5> mapScreen;
 double latitude=51.460015;
 double longitude=-0.548316;
 double heading=0.0;
+float depth = 0.0;
+uint32_t x_message_flags = 0;
+uint32_t X_MESSAGE_FIX_FLAG = 0x01;
+bool locationHasFix = false;
+int fixMessagesReceived = 0, noFixMessagesReceived = 0;
 
 const char* ntpServer = "pool.ntp.org";
 //const long  gmtOffset_sec = 0;        // timezone offset
@@ -362,6 +367,8 @@ void setup()
   if (systemStartupAndCheckForOTADemand())
     return;     // OTA Required, skip rest of setup.
   
+  delay(1500); // avoid all MCU starting simultaneously to avoid power spikes
+
   BUFFER_LOG_RESET();
   
   clockSprite = std::make_shared<TFT_eSprite>(&M5.Lcd);

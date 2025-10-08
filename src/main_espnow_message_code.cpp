@@ -37,7 +37,9 @@ void processIncomingESPNowMessages()
           const int latitudeOffset = 8;
           const int longitudeOffset = 16;
           const int headingOffset = 24;
-          const int currentTargetOffset = 32;
+          const int depthOffset = 32;
+          const int x_message_flags_offset = 36;
+          const int currentTargetOffset = 40;
                     
           char targetCode[7];
 
@@ -46,9 +48,12 @@ void processIncomingESPNowMessages()
           double old_heading = heading;
 
           strncpy(targetCode,rxQueueItemBuffer + targetCodeOffset,sizeof(targetCode));
+          targetCode[sizeof(targetCode) - 1] = '\0';  // Guarantee null termination
           memcpy(&latitude,  rxQueueItemBuffer + latitudeOffset,  sizeof(double));
           memcpy(&longitude, rxQueueItemBuffer + longitudeOffset, sizeof(double));
           memcpy(&heading,   rxQueueItemBuffer + headingOffset, sizeof(double));
+          memcpy(&depth,     rxQueueItemBuffer + depthOffset, sizeof(float));
+          memcpy(&x_message_flags,   rxQueueItemBuffer + x_message_flags_offset, sizeof(uint32_t));
 
           if (*currentTarget == '\0' ||
               strcmp(rxQueueItemBuffer+currentTargetOffset,currentTarget) != 0)
@@ -59,10 +64,20 @@ void processIncomingESPNowMessages()
             targetValid = true;
           }
 
+          locationHasFix = x_message_flags & X_MESSAGE_FIX_FLAG;
+
+          if (locationHasFix)
+            fixMessagesReceived++;
+          else
+            noFixMessagesReceived++;
+
           USB_SERIAL_PRINTF("targetCode: %s\n",targetCode);
           USB_SERIAL_PRINTF("latitude: %f\n",latitude);
           USB_SERIAL_PRINTF("longitude: %f\n",longitude);
           USB_SERIAL_PRINTF("heading: %f\n",heading);
+          USB_SERIAL_PRINTF("depth: %f\n",depth);
+          USB_SERIAL_PRINTF("Fix Msgs: %d\n",fixMessagesReceived);
+          USB_SERIAL_PRINTF("No Fix Msgs: %d\n",noFixMessagesReceived);
 
           // Verify timezone from GPS coordinates (one-time check)
           // This will need to use timezone/DST seconds offset sent from Mako (sourced from Lemon)
