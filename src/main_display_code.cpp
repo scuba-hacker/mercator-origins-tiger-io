@@ -402,7 +402,14 @@ void drawClockDisplay()
     M5.Lcd.setTextSize(1);
     M5.Lcd.setTextDatum(TC_DATUM);
     ypos+=M5.Lcd.drawString("OTA On",M5.Lcd.width()/2,ypos,4);
-    ypos+=M5.Lcd.drawString(WiFi.localIP().toString().c_str(),M5.Lcd.width()/2,ypos,2);
+    ypos+=M5.Lcd.fontHeight()*3;
+    M5.Lcd.drawString(WiFi.localIP().toString().c_str(),M5.Lcd.width()/2,ypos,2);
+    ypos+=M5.Lcd.fontHeight()*3;
+
+    M5.Lcd.drawString(WiFi.softAPmacAddress().c_str(),M5.Lcd.width()/2,ypos,2);    
+    ypos+=M5.Lcd.fontHeight()*3;
+
+    M5.Lcd.drawString(WiFi.macAddress().c_str(),M5.Lcd.width()/2,ypos,2);
   }
   else if (ESPNowActive)
   {

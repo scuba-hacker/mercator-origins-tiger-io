@@ -10,6 +10,8 @@ const char silkyHostName[] = "Silky";
 ////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// ESPNow Network Functions
 ////////////////////////////////////////////////////////////////////////
+// Tiger STA Mac shown in router for Tiger: E8:9F:6D:09:3A:E8
+// Tiger Soft AP for ESP Now: E8:9F:6D:09:3A:E9
 
 uint8_t MAKO_MAC[6] = {0x94, 0xB9, 0x7E, 0xAC, 0xF5, 0x45}; // BSSID: the AP Mac, not STA Mac shown in router
 
