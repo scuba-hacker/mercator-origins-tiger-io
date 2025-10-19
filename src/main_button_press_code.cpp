@@ -15,7 +15,7 @@ void setPrimaryControls(const bool useReedSwitches)
   }
 }
 
-bool checkForDualButtonPresses()
+bool checkForDualReedActivations()
 {
   static bool action500msReached = false;
   static bool action3000msReached = false;
@@ -116,19 +116,19 @@ bool checkReedSwitches()
     
   updateButtonsAndBuzzer();
 
-  if (checkForDualButtonPresses())
+  if (checkForDualReedActivations())
     return true;
 
   displayReedActivationIndicators();
 
   // Check for 20-second press to simulate leak (TEST MODE)  
-  const uint32_t UPPER_REED_SIMULATE_LEAK_ACTIVATION = 20000;             // Any display - TOP-RIGHT - 20s simulate leak
-  const uint32_t UPPER_REED_ESPNOW_ON_ACTIVATION = 5000;                  // Any display - TOP-RIGHT - 5s  enable ESP Now if off
-  const uint32_t UPPER_REED_CYCLE_DISPLAY_ACTIVATION = 100;               // Any display - TOP-RIGHT - tap to cycle the display
+  const uint32_t UPPER_REED_SIMULATE_LEAK_ACTIVATION = 20000;             // Any display - UPPER REED - 20s simulate leak
+  const uint32_t UPPER_REED_ESPNOW_ON_ACTIVATION = 5000;                  // Any display - UPPER - 5s  enable ESP Now if off
+  const uint32_t UPPER_REED_CYCLE_DISPLAY_ACTIVATION = 100;               // Any display - UPPER - tap to cycle the display
 
-  const uint32_t LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION = 15000;      // Any display - BOT-LEFT - 15s cancel leak simulation
-  const uint32_t LOWER_REED_REBOOT_ACTIVATION = 10000;                    // Any display - BOT-LEFT - 10s reboot
-  const uint32_t LOWER_REED_CONNECT_OTA_ACTIVATION = 5000;                // Any display - BOT-LEFT - 5s  enable OTA server
+  const uint32_t LOWER_REED_CANCEL_SIMULATE_LEAK_ACTIVATION = 15000;      // Any display - LOWER - 15s cancel leak simulation
+  const uint32_t LOWER_REED_REBOOT_ACTIVATION = 10000;                    // Any display - LOWER - 10s reboot
+  const uint32_t LOWER_REED_CONNECT_OTA_ACTIVATION = 5000;                // Any display - LOWER - 5s  enable OTA server
 
   const uint32_t LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION = 1000;        // Map only    - BOT-LEFT - Toggle show all features
   const uint32_t LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION = 100;        // Map only    - BOT-LEFT - Cycle map zoom level
