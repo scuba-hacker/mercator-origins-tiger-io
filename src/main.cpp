@@ -176,6 +176,7 @@ double latitude=51.460015;
 double longitude=-0.548316;
 double heading=0.0;
 float depth = 0.0;
+float course = 0.0;
 uint32_t x_message_flags = 0;
 uint32_t X_MESSAGE_FIX_FLAG = 0x01;
 bool locationHasFix = false;

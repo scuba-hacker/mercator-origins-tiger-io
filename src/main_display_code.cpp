@@ -418,32 +418,42 @@ void drawClockDisplay()
     M5.Lcd.setTextDatum(BC_DATUM);
     ypos+=M5.Lcd.fontHeight(2)*2;
 
-    const bool overrideESPLabel = false;
-    if (overrideESPLabel)
+    const bool showfreeRAMLabel = false;
+    const bool showESPLabel = false;
+    const bool showGPSCourse = true;
+
+    if (showGPSCourse)
     {
-      multi_heap_info_t info;
-      heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT); // internal RAM, memory capable to store data or to create new task
-      snprintf(espLabel,sizeof(espLabel),"fr: %i",info.total_free_bytes);
+      snprintf(espLabel,sizeof(espLabel),"  %.0fD  ",course);
+      M5.Lcd.drawString(espLabel,M5.Lcd.width()/2,ypos,4);
     }
     else
     {
-      if (isPairedWithMako)
+      if (showfreeRAMLabel)
       {
-        if (!pingReceivedFromMako)
-          snprintf(espLabel,sizeof(espLabel),"ESP+ %i",attemptSendPingResponseToMako);
-        else if (pingReceivedFromMako % 2)
-          snprintf(espLabel,sizeof(espLabel),"ESP/ %i",attemptSendPingResponseToMako);
+        multi_heap_info_t info;
+        heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT); // internal RAM, memory capable to store data or to create new task
+        snprintf(espLabel,sizeof(espLabel),"fr: %i",info.total_free_bytes);
+      }
+      else if (showESPLabel)
+      {
+        if (isPairedWithMako)
+        {
+          if (!pingReceivedFromMako)
+            snprintf(espLabel,sizeof(espLabel),"ESP+ %i",attemptSendPingResponseToMako);
+          else if (pingReceivedFromMako % 2)
+            snprintf(espLabel,sizeof(espLabel),"ESP/ %i",attemptSendPingResponseToMako);
+          else
+            snprintf(espLabel,sizeof(espLabel),"ESP\\ %i",attemptSendPingResponseToMako);
+        }
         else
-          snprintf(espLabel,sizeof(espLabel),"ESP\\ %i",attemptSendPingResponseToMako);
+        {
+          M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
+          snprintf(espLabel,sizeof(espLabel),"ESP-      ");
+        }
       }
-      else
-      {
-        M5.Lcd.setTextColor(TFT_RED, TFT_BLACK);
-        snprintf(espLabel,sizeof(espLabel),"ESP-      ");
-      }
+      M5.Lcd.drawString(espLabel,M5.Lcd.width()/2,ypos,4);
     }
-   
-    M5.Lcd.drawString(espLabel,M5.Lcd.width()/2,ypos,4);
   }
   M5.Lcd.setTextDatum(TL_DATUM);
 

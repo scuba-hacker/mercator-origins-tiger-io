@@ -38,8 +38,9 @@ void processIncomingESPNowMessages()
           const int longitudeOffset = 16;
           const int headingOffset = 24;
           const int depthOffset = 32;
-          const int x_message_flags_offset = 36;
-          const int currentTargetOffset = 40;
+          const int courseOffset = 36;
+          const int x_message_flags_offset = 40;
+          const int currentTargetOffset = 44;
                     
           char targetCode[7];
 
@@ -53,6 +54,7 @@ void processIncomingESPNowMessages()
           memcpy(&longitude, rxQueueItemBuffer + longitudeOffset, sizeof(double));
           memcpy(&heading,   rxQueueItemBuffer + headingOffset, sizeof(double));
           memcpy(&depth,     rxQueueItemBuffer + depthOffset, sizeof(float));
+          memcpy(&course,    rxQueueItemBuffer + courseOffset, sizeof(float));
           memcpy(&x_message_flags,   rxQueueItemBuffer + x_message_flags_offset, sizeof(uint32_t));
 
           if (*currentTarget == '\0' ||
