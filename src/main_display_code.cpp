@@ -413,7 +413,8 @@ void drawClockDisplay()
   }
   else if (ESPNowActive)
   {
-    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK);    
+    const bool preventTransparency = true;
+    M5.Lcd.setTextColor(TFT_GREEN, TFT_BLACK, preventTransparency);
     M5.Lcd.setTextSize(1);
     M5.Lcd.setTextDatum(BC_DATUM);
     ypos+=M5.Lcd.fontHeight(2)*2;
@@ -424,7 +425,7 @@ void drawClockDisplay()
 
     if (showGPSCourse)
     {
-      snprintf(espLabel,sizeof(espLabel),"  %.0fD  ",course);
+      snprintf(espLabel,sizeof(espLabel),"   %.0fD   ",course);
       M5.Lcd.drawString(espLabel,M5.Lcd.width()/2,ypos,4);
     }
     else

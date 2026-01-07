@@ -15,6 +15,26 @@ void setPrimaryControls(const bool useReedSwitches)
   }
 }
 
+void enableOTADueToReedActivation()
+{
+  TeardownESPNow();
+  isPairedWithMako = false;
+  clockSprite->deleteSprite();
+  
+  // enable OTA
+  const bool wifiOnly = false;
+  M5.Lcd.fillScreen(TFT_BLACK);
+  const int maxWifiScanAttempts = 3;
+  connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
+
+  delay(1000);
+
+  const bool refreshCurrentScreen=true;
+  cycleDisplays(refreshCurrentScreen);
+
+  USB_SERIAL_PRINTLN("Enable OTA Mode");
+}
+
 bool checkForDualReedActivations()
 {
   static bool action500msReached = false;
@@ -59,16 +79,7 @@ bool checkForDualReedActivations()
         if (millis() - lastOTAToggle > 5000)  // Prevent rapid OTA toggles
         {
           lastOTAToggle = millis();
-          // enable OTA
-          const bool wifiOnly = false;
-          M5.Lcd.fillScreen(TFT_BLACK);
-          const int maxWifiScanAttempts = 3;
-          connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
-
-          delay (2000);
-
-          const bool refreshCurrentScreen=true;
-          cycleDisplays(refreshCurrentScreen);
+          enableOTADueToReedActivation();
           triggered = true;
         }
       }
@@ -198,22 +209,8 @@ bool checkReedSwitches()
   { 
     activationTime = lastSecondButtonPressLasted;
     reedSwitchTop = false;
-
-    TeardownESPNow();
-    isPairedWithMako = false;
-    clockSprite->deleteSprite();
-    
-    // enable OTA
-    const bool wifiOnly = false;
-    M5.Lcd.fillScreen(TFT_BLACK);
-    const int maxWifiScanAttempts = 3;
-    connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Enable\nOTA Mode\n");
-
+    enableOTADueToReedActivation();
     changeMade = true;
-    const bool refreshCurrentScreen=true;
-    cycleDisplays(refreshCurrentScreen);
-
-    USB_SERIAL_PRINTLN("Enable OTA Mode");
   }
   // press second button for 1 second to toggle all features on the map
   else if (p_secondButton->wasReleasefor(LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION))
