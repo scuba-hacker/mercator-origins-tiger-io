@@ -469,9 +469,9 @@ bool setupOTAWebServer(const char* _ssid, const char* _password, const char* lab
   int count = timeout / cycleTime;
 
   if (wifiOnly)
-    M5.Lcd.println("Connect\nWiFi\n");
+    M5.Lcd.println("Connect WiFi");
   else
-    M5.Lcd.println("Connect\nWiFi (OTA)\n");
+    M5.Lcd.println("Connect WiFi (OTA)");
 
   while (WiFi.status() != WL_CONNECTED && --count > 0)
   {
@@ -616,7 +616,7 @@ bool connectToWiFiAndInitOTA(const bool wifiOnly, int repeatScanAttempts, const 
 
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.fillScreen(TFT_BLACK);
-  M5.Lcd.setTextSize(2);
+  M5.Lcd.setTextSize(1);
 
   M5.Lcd.println(message);
 

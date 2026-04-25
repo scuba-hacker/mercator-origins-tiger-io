@@ -13,6 +13,8 @@ void  initialiseRTCfromNTP()
 {
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setCursor(0,0);
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setRotation(1);
 
   // NTP connects as a STA to infrastructure WiFi, which moves the radio home
   // channel to the router's channel. ESP-NOW peers must be rebuilt afterward
@@ -27,7 +29,7 @@ void  initialiseRTCfromNTP()
   const bool wifiOnly = true;
 
   const int maxWifiScanAttempts = 2;  
-  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP\nTime...\n"))
+  if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP Time..."))
   {
     M5.Lcd.println("NTP Wifi OK");
     BUFFER_LOG_PRINTLN("NTP Wifi OK");
@@ -114,7 +116,7 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
     if (httpCode == HTTP_CODE_OK)
     {
       payload = httpLondonTZOffset.getString();
-      M5.Lcd.println(payload);
+      BUFFER_LOG_PRINTLN(payload.c_str());
 
       if (payload.length() > 0)
       {
@@ -127,7 +129,7 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
         {
           long gmtOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
           timezoneOffset = -gmtOffset;                      // negate because configTime negates it again
-          M5.Lcd.printf("offset:%ld ",timezoneOffset);
+          M5.Lcd.printf("offset:%ld\n",timezoneOffset);
           BUFFER_LOG_PRINTF("offset:%ld ",timezoneOffset);
 
           saveLastTimezoneOffset(timezoneOffset);
