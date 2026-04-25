@@ -63,7 +63,7 @@ void disableAllWatchdogs() {
   rtc_wdt_protect_on();
 }
 
-void disableFeaturesForOTA(bool screenToRed=true)
+void disableFeaturesForOTA()
 {
   haltAllProcessingDuringOTAUpload = true;
 
@@ -73,7 +73,8 @@ void disableFeaturesForOTA(bool screenToRed=true)
   if (mapScreen.get())
     mapScreen.reset();      // delete mapscreen to save heapspace prior to OTA
 
-  clockSprite->deleteSprite();
+  if (clockSprite.get())
+    clockSprite->deleteSprite();
   
   // Don't close WebSerial connections - we want the /logs page to work
   // WebSerial.closeAll();   // close all websocket connetions for WebSerial
@@ -95,7 +96,9 @@ void disableFeaturesForOTA(bool screenToRed=true)
       // Just discard the messages
     }
   }
-  
+
+  USB_SERIAL_PRINTLN("Disabled Features for OTA to run");
+
   // Small delay to ensure all operations complete
   delay(100);
 }
@@ -130,7 +133,7 @@ bool systemStartupAndCheckForOTADemand()
       topReedActiveAtStartup = true;
       haltAllProcessingDuringOTAUpload = true;
       forceLoopInitialOTAEnablement = true;
-      disableFeaturesForOTA(); 
+      disableFeaturesForOTA();
       break;
     }
     // Side Reed uses GPIO 0 which is a strapping pin
@@ -409,7 +412,7 @@ void uploadOTABeginCallback(AsyncElegantOtaClass* originator)
   WebSerial.closeAll();
   writeLogToSerial = false;
   
-  disableFeaturesForOTA(false);   // prevent LCD call due to separate thread calling this
+  disableFeaturesForOTA();   // prevent LCD call due to separate thread calling this
 }
 
 void uploadOTAProgressCallback(AsyncElegantOtaClass* originator, size_t progress, size_t total) 

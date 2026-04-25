@@ -158,7 +158,9 @@ bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
         resetCurrentTarget();
       else if (display_mode == DISPLAY_CURRENT_TARGET)     // show current target, next is map
       {
-        if (mapScreen.get())    // OTA enabling has to delete the map screen
+        bool tempDisableMap = false;
+
+        if (!tempDisableMap && mapScreen.get())    // OTA enabling has to delete the map screen
           resetMap();
         else
           resetClock();   // OTA enabled, go back to clock
@@ -275,6 +277,8 @@ void drawCurrentTargetDisplay()
     if (targetValid)
     {
       M5.Lcd.setTextColor(TFT_CYAN, TFT_BLACK);
+//      M5.Lcd.drawNumber(ESPNowMessagesReceived,centre,ypos);
+
       M5.Lcd.drawString("Towards",centre,ypos);
       ypos+=lineHeight;
     }

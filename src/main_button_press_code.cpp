@@ -19,7 +19,9 @@ void enableOTADueToReedActivation()
 {
   TeardownESPNow();
   isPairedWithMako = false;
-  clockSprite->deleteSprite();
+
+  disableFeaturesForOTA();
+  haltAllProcessingDuringOTAUpload = false;
   
   // enable OTA
   const bool wifiOnly = false;

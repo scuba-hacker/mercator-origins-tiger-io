@@ -80,6 +80,7 @@ String ssid_connected;
 
 
 // ************** ESPNow variables **************
+uint16_t ESPNowMessagesReceived = 0;
 uint16_t ESPNowMessagesDelivered = 0;
 uint16_t ESPNowMessagesFailedToDeliver = 0;
 
@@ -212,7 +213,7 @@ e_display_modes display_mode = DISPLAY_CLOCK;
 const int defaultBrightness = 100;
 
 char rxQueueItemBuffer[256];
-const uint8_t queueLength=4;
+const uint8_t queueLength=10;
 
 char currentTarget[128];
 char previousTarget[128];
@@ -225,6 +226,7 @@ long milliSecondsToWaitForShutDown=100;
 
 bool systemStartupAndCheckForOTADemand();
 bool cutShortLoopOnOTADemand();
+void disableFeaturesForOTA();
 void initialiseRTCfromNTP();
 bool detectTimezoneFromIP(long& timezoneOffset);
 bool detectTimezoneFromGPS(double lat, double lon);

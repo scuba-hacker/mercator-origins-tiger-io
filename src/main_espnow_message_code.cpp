@@ -14,6 +14,7 @@ void processIncomingESPNowMessages()
       {
         case 'c':   // current target
         {
+          ESPNowMessagesReceived++;
           if (strcmp(rxQueueItemBuffer+1,currentTarget) != 0)
           {
             strncpy(previousTarget,currentTarget,sizeof(previousTarget));
@@ -32,6 +33,9 @@ void processIncomingESPNowMessages()
         }
         case 'X':   // location, heading and current Target info.
         {
+             // debugging bad target update in X msg for tiger and
+             // why tiger is processing oceanic's msg
+//          return;
           // format: targetCode[7],lat,long,heading,targetText
           const int targetCodeOffset = 1;
           const int latitudeOffset = 8;
