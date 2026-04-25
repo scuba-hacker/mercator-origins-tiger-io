@@ -495,8 +495,10 @@ void toSerialESPNowSendDataResult(const esp_err_t result)
     USB_SERIAL_PRINTLN("ESPNOW No Memory");
   else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
     USB_SERIAL_PRINTLN("ESPNOW Peer not found.");
+  else if (result == ESP_ERR_ESPNOW_IF)
+    USB_SERIAL_PRINTLN("ESPNOW Interface error (wrong ifidx or interface not ready).");
   else
-    USB_SERIAL_PRINTLN("ESPNOW Unknown Error");
+    USB_SERIAL_PRINTF("ESPNOW Unknown Error: 0x%x\n", result);
 }
 
 

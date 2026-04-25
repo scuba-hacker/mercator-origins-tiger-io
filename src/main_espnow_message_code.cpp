@@ -6,6 +6,8 @@
 
 void processIncomingESPNowMessages()
 {
+  char heapMessage[32];
+
  if (espNOW_msgsReceivedQueue && !otaActive && ESPNowActive)
   {
     if (xQueueReceive(espNOW_msgsReceivedQueue,&(rxQueueItemBuffer),(TickType_t)0))
@@ -15,6 +17,9 @@ void processIncomingESPNowMessages()
         case 'c':   // current target
         {
           ESPNowMessagesReceived++;
+          snprintf(heapMessage,sizeof(heapMessage),"c Msg Rx (esp msg: %hu)", ESPNowMessagesReceived);
+          dumpHeapUsage(heapMessage);
+
           if (strcmp(rxQueueItemBuffer+1,currentTarget) != 0)
           {
             strncpy(previousTarget,currentTarget,sizeof(previousTarget));
@@ -27,13 +32,21 @@ void processIncomingESPNowMessages()
 
         case 'P':     // Ping message
         {
+          ESPNowMessagesReceived++;
+          snprintf(heapMessage,sizeof(heapMessage),"P Msg Rx (esp msg: %hu)", ESPNowMessagesReceived);
+          dumpHeapUsage(heapMessage);
           // send back a ping response to Mako - make generic later
           publishToMakoPingResponseMessage();
           break;
         }
+
         case 'X':   // location, heading and current Target info.
         {
-             // debugging bad target update in X msg for tiger and
+          ESPNowMessagesReceived++;
+          snprintf(heapMessage,sizeof(heapMessage),"X Msg Rx (esp msg: %hu)", ESPNowMessagesReceived);
+          dumpHeapUsage(heapMessage);
+
+          // debugging bad target update in X msg for tiger and
              // why tiger is processing oceanic's msg
 //          return;
           // format: targetCode[7],lat,long,heading,targetText
@@ -78,6 +91,7 @@ void processIncomingESPNowMessages()
             noFixMessagesReceived++;
 
           USB_SERIAL_PRINTF("targetCode: %s\n",targetCode);
+          USB_SERIAL_PRINTF("currentTarget: %s\n",currentTarget);
           USB_SERIAL_PRINTF("latitude: %f\n",latitude);
           USB_SERIAL_PRINTF("longitude: %f\n",longitude);
           USB_SERIAL_PRINTF("heading: %f\n",heading);
@@ -92,7 +106,8 @@ void processIncomingESPNowMessages()
             // detectTimezoneFromGPS(latitude, longitude);
           }
 
-          mapScreen->setTargetWaypointByLabel(targetCode);
+          if (mapScreen.get())
+            mapScreen->setTargetWaypointByLabel(targetCode);
 
           if (testPreCannedLatLong)
           {
@@ -101,7 +116,7 @@ void processIncomingESPNowMessages()
             heading = static_cast<int>((old_heading + 5)) % 360;
           }
 
-          if (display_mode == DISPLAY_MAP) // map on screen
+          if (display_mode == DISPLAY_MAP && mapScreen.get())
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
           else if (display_mode == DISPLAY_CURRENT_TARGET && refreshTargetShown)
             resetCurrentTarget();
@@ -123,6 +138,8 @@ void publishToMakoPingResponseMessage()
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"p%i", attemptSendPingResponseToMako);
     USB_SERIAL_PRINTF("Sending ESP p msg to Mako... Ping Response Message: %s\n",mako_espnow_buffer);
     pingReceivedFromMako++;
+    USB_SERIAL_PRINTF("ESPNow send diag: WiFiMode=%d WiFiCh=%d peerCh=%d peerIfidx=%d ESPNowActive=%d\n",
+      WiFi.getMode(), WiFi.channel(), ESPNow_mako_peer.channel, ESPNow_mako_peer.ifidx, ESPNowActive);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
     toSerialESPNowSendDataResult(ESPNowSendResult);
 
@@ -155,7 +172,11 @@ void publishToMakoTestMessage(const char* testMessage)
     USB_SERIAL_PRINTLN("Sending ESP T msg to Mako... Test Message");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
 
+    USB_SERIAL_PRINTF("ESPNow send diag: WiFiMode=%d WiFiCh=%d peerCh=%d peerIfidx=%d ESPNowActive=%d\n",
+      WiFi.getMode(), WiFi.channel(), ESPNow_mako_peer.channel, ESPNow_mako_peer.ifidx, ESPNowActive);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    toSerialESPNowSendDataResult(ESPNowSendResult);
+    dumpHeapUsage("T Msg Sent: ");
   }
 }
 
@@ -166,7 +187,11 @@ void publishToMakoForceGoProButtonsPrimaryControl()
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"F");
     USB_SERIAL_PRINTLN("Sending ESP F msg to Mako... Force use go pro buttons to primary controls (disable M5 Buttons if set to primary)");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
+    USB_SERIAL_PRINTF("ESPNow send diag: WiFiMode=%d WiFiCh=%d peerCh=%d peerIfidx=%d ESPNowActive=%d\n",
+      WiFi.getMode(), WiFi.channel(), ESPNow_mako_peer.channel, ESPNow_mako_peer.ifidx, ESPNowActive);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+    toSerialESPNowSendDataResult(ESPNowSendResult);
+    dumpHeapUsage("F Msg Sent: ");
   }
   else
   {
@@ -181,8 +206,11 @@ void publishToMakoReedActivation(const bool topReed, const uint32_t ms)
     snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"R%c%lu       ",(topReed ? 'T' : 'B'),ms);
     USB_SERIAL_PRINTLN("Sending ESP R msg to Mako... Reed Activation");
     USB_SERIAL_PRINTLN(mako_espnow_buffer);
+    USB_SERIAL_PRINTF("ESPNow send diag: WiFiMode=%d WiFiCh=%d peerCh=%d peerIfidx=%d ESPNowActive=%d\n",
+      WiFi.getMode(), WiFi.channel(), ESPNow_mako_peer.channel, ESPNow_mako_peer.ifidx, ESPNowActive);
     ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
     toSerialESPNowSendDataResult(ESPNowSendResult);
+    dumpHeapUsage("R Msg Sent: ");
   }
   else
   {
@@ -204,7 +232,11 @@ void publishToMakoLeakDetected()
       snprintf(mako_espnow_buffer,sizeof(mako_espnow_buffer),"L");
       USB_SERIAL_PRINTLN("Sending ESP L msg to Mako... Leak Detected");
       USB_SERIAL_PRINTLN(mako_espnow_buffer);
+      USB_SERIAL_PRINTF("ESPNow send diag: WiFiMode=%d WiFiCh=%d peerCh=%d peerIfidx=%d ESPNowActive=%d\n",
+        WiFi.getMode(), WiFi.channel(), ESPNow_mako_peer.channel, ESPNow_mako_peer.ifidx, ESPNowActive);
       ESPNowSendResult = esp_now_send(ESPNow_mako_peer.peer_addr, (uint8_t*)mako_espnow_buffer, strlen(mako_espnow_buffer)+1);
+      toSerialESPNowSendDataResult(ESPNowSendResult);
+      dumpHeapUsage("L Msg Sent: ");
     }
     else
     {

@@ -14,6 +14,16 @@ void  initialiseRTCfromNTP()
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setCursor(0,0);
 
+  // NTP connects as a STA to infrastructure WiFi, which moves the radio home
+  // channel to the router's channel. ESP-NOW peers must be rebuilt afterward
+  // so their registered channel matches the restored ESP-NOW home channel.
+  const bool restartESPNowAfterNTP = enableESPNow && ESPNowActive && espNOW_msgsReceivedQueue;
+  if (restartESPNowAfterNTP)
+  {
+    BUFFER_LOG_PRINTLN("Stopping ESP-NOW for NTP WiFi connection");
+    TeardownESPNow();
+  }
+
   const bool wifiOnly = true;
 
   const int maxWifiScanAttempts = 2;  
@@ -44,9 +54,6 @@ void  initialiseRTCfromNTP()
       }
     }
 
-    // Properly disconnect and reset WiFi mode for ESP-NOW
-    WiFi.disconnect();
-    WiFi.mode(WIFI_OFF);
     M5.Lcd.println("NTP Updated");
     BUFFER_LOG_PRINTLN("NTP Updated");
     delay(250);
@@ -56,6 +63,17 @@ void  initialiseRTCfromNTP()
     M5.Lcd.println("NTP Wifi NOT OK");
     BUFFER_LOG_PRINTLN("NTP Wifi NOT OK");
     delay(1000);
+  }
+
+  // Fully drop the infrastructure STA connection before restoring ESP-NOW.
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+
+  if (restartESPNowAfterNTP)
+  {
+    BUFFER_LOG_PRINTLN("Restarting ESP-NOW after NTP WiFi connection");
+    configAndStartUpESPNow();
   }
 }
 

@@ -2,16 +2,16 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-bool reedSwitchesPrimaryControl = true;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
+bool reedSwitchesPrimaryControl = false;    // false means use the M5 Stick physical buttons (eg out of gopro case bench test)
                                             // true means use the reeds meaning it must be installed into the pod.
                                             // If set to false when Tiger is in the pod, activate a reed switch to make
                                             // reeds primary so that OTA can be done with fixed code.  
-bool writeLogToSerial=false;
+bool writeLogToSerial=true;
 
 bool disableNTPAtStartupforDevelopment = false;   // make true for faster startup when developing
 
 // disabled
-//#define ENABLE_LARGE_BUFFER_LOG      // enable to give 20KB allocation to buffer log. When disabled, only 1KB allocated.
+// #define ENABLE_LARGE_BUFFER_LOG      // enable to give 4KB allocation to buffer log. When disabled, only 1KB allocated.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -373,22 +373,10 @@ void setup()
   delay(1500); // avoid all MCU starting simultaneously to avoid power spikes
 
   BUFFER_LOG_RESET();
-  
-  clockSprite = std::make_shared<TFT_eSprite>(&M5.Lcd);
-  clockSprite->createSprite(135, 170);
 
+  // Init WiFi/ESP-NOW before heavy heap allocations (sprite ~45KB, mapScreen) so
+  // the WiFi driver can allocate its RX buffers from unfragmented internal DRAM.
   readPreferencesFromEEPROM();
-
-  strncpy(previousTarget,"None",sizeof(previousTarget));
-  strncpy(currentTarget,"No\nTarget\nSet\nFrom\nMako",sizeof(currentTarget));
-
-  pinMode(UNUSED_GPIO_36_PIN,INPUT);
-
-  mapScreen = std::make_unique<MapScreen_M5>(M5.Lcd);
-  mapScreen->provideLoggingHook(USB_SERIAL);
-
-  mapScreen->setDrawAllFeatures(true);
-  mapScreen->setUseDiverHeading(true);
 
   espNOW_msgsReceivedQueue = xQueueCreate(queueLength,sizeof(rxQueueItemBuffer));
 
@@ -396,6 +384,21 @@ void setup()
     BUFFER_LOG_PRINTLN("Failed to create queue");
   else
     BUFFER_LOG_PRINTLN("Created msg queue");
+
+  if (enableESPNow && espNOW_msgsReceivedQueue)
+  {
+    configAndStartUpESPNow();
+  }
+
+  clockSprite = std::make_shared<TFT_eSprite>(&M5.Lcd);
+  // Buffer allocated lazily in resetClock(), freed in resetMap()/resetCurrentTarget()
+
+  strncpy(previousTarget,"None",sizeof(previousTarget));
+  strncpy(currentTarget,"No\nTarget\nSet\nFrom\nMako",sizeof(currentTarget));
+
+  pinMode(UNUSED_GPIO_36_PIN,INPUT);
+
+  // mapScreen allocated lazily in resetMap(), freed in resetClock()/resetCurrentTarget()
 
   setPrimaryControls(reedSwitchesPrimaryControl);
 
@@ -405,11 +408,6 @@ void setup()
     initialiseRTCfromNTP();
 
   resetClock();
-
-  if (enableESPNow && espNOW_msgsReceivedQueue)
-  {
-    configAndStartUpESPNow();
-  }
 
   M5.Lcd.fillScreen(TFT_BLACK);
   display_mode = DISPLAY_CLOCK;

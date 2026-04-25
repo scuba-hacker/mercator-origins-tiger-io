@@ -21,7 +21,6 @@ void enableOTADueToReedActivation()
   isPairedWithMako = false;
 
   disableFeaturesForOTA();
-  haltAllProcessingDuringOTAUpload = false;
   
   // enable OTA
   const bool wifiOnly = false;
@@ -71,7 +70,16 @@ bool checkForDualReedActivations()
       }
       else if (action3000msReached)
       {
-        // 3 second hold completed
+        // 3 second hold completed - send a force to use gopro buttons to Mako
+        // Get out of jail when Mako is installed in gopro case but physical
+        // buttons are enabled instead of gopro buttons. Means that Mako
+        // does not need to be removed from case to flash having to use USB.
+        if (ESPNowActive)
+        {
+          USB_SERIAL_PRINTLN("Send 'F' ESPNow Message: Force Mako to use GoPro buttons");
+          publishToMakoForceGoProButtonsPrimaryControl();
+        }
+
         triggered = true;
       }
       else if (action500msReached)
@@ -146,6 +154,11 @@ bool checkReedSwitches()
   const uint32_t LOWER_REED_TOGGLE_MAP_FEATURES_ACTIVATION = 1000;        // Map only    - BOT-LEFT - Toggle show all features
   const uint32_t LOWER_REED_CYCLE_MAP_ZOOM_LEVEL_ACTIVATION = 100;        // Map only    - BOT-LEFT - Cycle map zoom level
 
+  // The isTopReedClosed and isSideReedClosed functions always check the Reed GPIOs
+  // This is so that even when reeds are not set to primary control, ie M5 buttons are enabled,
+  // then reed switches can be enabled as primary so that you don't have to open the gopro case
+  // to connect USB to flash back to reeds enabled. This is to deal with unintentional setting
+  // of don't use reed switches as primary when Tiger is located in the gopro case.
   if (!reedSwitchesPrimaryControl && (isTopReedClosed() || isSideReedClosed()))
   {
     delay(500);                                       // small delay to let the reed open again

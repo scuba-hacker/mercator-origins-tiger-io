@@ -106,6 +106,18 @@ void hideLeakAlarm()
 
 void resetCurrentTarget()
 {
+  if (clockSprite.get() && clockSprite->width() > 0)
+  {
+    clockSprite->deleteSprite();
+    USB_SERIAL_PRINTF("resetCurrentTarget: sprite freed, heap free=%d largest=%d\n",
+      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
+  if (mapScreen.get())
+  {
+    mapScreen.reset();
+    USB_SERIAL_PRINTF("resetCurrentTarget: mapScreen freed, heap free=%d largest=%d\n",
+      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
   refreshTargetShown = true;
   M5.Lcd.fillScreen(BLACK);
   display_mode = DISPLAY_CURRENT_TARGET;
@@ -113,12 +125,39 @@ void resetCurrentTarget()
 
 void resetMap()
 {
+  if (clockSprite.get() && clockSprite->width() > 0)
+  {
+    clockSprite->deleteSprite();
+    USB_SERIAL_PRINTF("resetMap: sprite freed, heap free=%d largest=%d\n",
+      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
+  if (!mapScreen.get())
+  {
+    mapScreen = std::make_unique<MapScreen_M5>(M5.Lcd);
+    mapScreen->provideLoggingHook(USB_SERIAL);
+    mapScreen->setDrawAllFeatures(true);
+    mapScreen->setUseDiverHeading(true);
+    USB_SERIAL_PRINTF("resetMap: mapScreen allocated, heap free=%d largest=%d\n",
+      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
   mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
   display_mode = DISPLAY_MAP;
 }
 
 void resetClock()
 {
+  if (mapScreen.get())
+  {
+    mapScreen.reset();
+    USB_SERIAL_PRINTF("resetClock: mapScreen freed, heap free=%d largest=%d\n",
+      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
+  if (clockSprite.get() && clockSprite->width() == 0)
+  {
+    void* buf = clockSprite->createSprite(135, 170);
+    USB_SERIAL_PRINTF("resetClock: sprite alloc %s, heap free=%d largest=%d\n",
+      buf ? "OK" : "FAILED", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  }
   M5.Lcd.setRotation(0);
   M5.Lcd.fillScreen(BLACK);
   display_mode = DISPLAY_CLOCK;
@@ -142,10 +181,10 @@ bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
       else if (display_mode == DISPLAY_CURRENT_TARGET)
         resetCurrentTarget();
       else if (display_mode == DISPLAY_MAP)
-        if (mapScreen.get())    // OTA enabling has to delete the map screen
+        if (!haltAllProcessingDuringOTAUpload)
           resetMap();
         else
-          resetClock();   // OTA enabled, go back to clock
+          resetClock();   // OTA active, map unavailable
       else
       {
         USB_SERIAL_PRINTLN("cycleDisplays Error: invalid mode_");
@@ -160,10 +199,10 @@ bool cycleDisplays(bool refreshCurrentDisplay, e_display_modes setDisplayTo)
       {
         bool tempDisableMap = false;
 
-        if (!tempDisableMap && mapScreen.get())    // OTA enabling has to delete the map screen
+        if (!tempDisableMap && !haltAllProcessingDuringOTAUpload)
           resetMap();
         else
-          resetClock();   // OTA enabled, go back to clock
+          resetClock();   // OTA active, map unavailable
       }
       else if (display_mode == DISPLAY_MAP)     // show map, next is clock
         resetClock();
@@ -201,7 +240,7 @@ void drawPodControlsEnabledDisplay()
    M5.Lcd.fillScreen(TFT_BLACK);
    M5.Lcd.setCursor(0,0);
    M5.Lcd.setTextSize(3);
-   M5.Lcd.println("Pod\n\Control\nEnabled\n");
+   M5.Lcd.println("Pod\nControl\nEnabled\n");
    // synchronous delay ok here - this is a development tool only - in case gets uploaded that makes M5 buttons primary
    // then switch to clock
    delay(5000);
