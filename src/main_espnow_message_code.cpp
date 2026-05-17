@@ -120,6 +120,10 @@ void processIncomingESPNowMessages()
             mapScreen->drawDiverOnBestFeaturesMapAtCurrentZoom(latitude, longitude, heading);
           else if (display_mode == DISPLAY_CURRENT_TARGET && refreshTargetShown)
             resetCurrentTarget();
+          if (mapScreen.get())
+            updateLinearCompassBearings(heading, mapScreen->getTargetBearing(), mapScreen->getNearestExitBearing());
+          else
+            updateLinearCompassBearings(5, 10, 15);
         }
         default:
         {

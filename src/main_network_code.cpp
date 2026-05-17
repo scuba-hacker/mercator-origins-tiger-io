@@ -96,6 +96,8 @@ void disableFeaturesForOTA()
       // Just discard the messages
     }
   }
+  
+  stopLinearCompassDisplay();
 
   USB_SERIAL_PRINTLN("Disabled Features for OTA to run");
 

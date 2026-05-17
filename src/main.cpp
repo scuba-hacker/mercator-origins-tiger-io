@@ -36,6 +36,7 @@ Sofia, Bulgaria
 #include <MapScreen_M5.h>
 #include <TFT_eSPI.h>
 #include <U8g2lib.h>
+#include "linear_compass_display.h"
 
 #include <WebSerial.h>
 #include "SerialConfig.h"
@@ -466,6 +467,8 @@ void setup()
 
   M5.Lcd.fillScreen(TFT_BLACK);
   display_mode = DISPLAY_CLOCK;
+
+  initCompass();
 }
 
 /////////////// EVENT LOOP

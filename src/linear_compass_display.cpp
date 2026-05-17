@@ -1,4 +1,4 @@
-#include "linear_compass_demo.h"
+#include "linear_compass_display.h"
 
 #include <U8g2lib.h>
 #include <math.h>
@@ -48,7 +48,6 @@ QueueHandle_t compassBearingQueue = nullptr;
 volatile bool compassTaskShouldRun = false;
 volatile bool compassTaskRunning = false;
 float compassInertia = COMPASS_DEFAULT_INERTIA;
-uint32_t lastBearingSentAt = 0;
 
 struct CompassBearingPacket {
     float bearing;
@@ -101,57 +100,6 @@ float segmentBearing(float seconds, float startSeconds, float endSeconds, float 
 {
     float t = (seconds - startSeconds) / (endSeconds - startSeconds);
     return lerpBearing(from, to, t);
-}
-
-float scriptedBearing(uint32_t localMs)
-{
-    float seconds = localMs * 0.001f;
-    float bearing = 0.0f;
-
-    if (seconds < 6.0f) {
-        bearing = segmentBearing(seconds, 0.0f, 6.0f, 285.0f, 350.0f);
-    } else if (seconds < 12.0f) {
-        bearing = segmentBearing(seconds, 6.0f, 12.0f, 350.0f, 42.0f);
-    } else if (seconds < 18.0f) {
-        bearing = segmentBearing(seconds, 12.0f, 18.0f, 42.0f, 94.0f);
-    } else if (seconds < 24.0f) {
-        bearing = segmentBearing(seconds, 18.0f, 24.0f, 94.0f, 20.0f);
-    } else {
-        bearing = segmentBearing(seconds, 24.0f, 30.0f, 20.0f, 315.0f);
-    }
-
-    float handSway = sinf(seconds * 4.2f) * 1.3f + sinf(seconds * 1.15f) * 0.7f;
-    return wrap360(bearing + handSway);
-}
-
-float scriptedTargetBearing(uint32_t localMs)
-{
-    float seconds = (localMs % 30000UL) * 0.001f;
-    float target = 0.0f;
-
-    if (seconds < 7.5f) {
-
-//        target = segmentBearing(seconds, 0.0f, 7.5f, 8.0f, 72.0f);
-        target = 180;
-    } else if (seconds < 15.0f) {
-//        target = segmentBearing(seconds, 7.5f, 15.0f, 72.0f, 148.0f);
-
-        target = 180;
-    } else if (seconds < 22.5f) {
-      target=20;
-  //      target = segmentBearing(seconds, 15.0f, 22.5f, 148.0f, 286.0f);
-    } else {
-//        target = segmentBearing(seconds, 22.5f, 30.0f, 286.0f, 18.0f);
-      target=350;
-    }
-    return target;
-//    return wrap360(target + sinf(seconds * 0.9f) * 0.8f);
-}
-
-float scriptedHomeBearing(uint32_t localMs)
-{
-    (void)localMs;
-    return 30.0f;
 }
 
 const char *cardinalLabel(uint16_t degrees)
@@ -561,17 +509,12 @@ void setLinearCompassInertia(float inertia)
     compassInertia = inertia;
 }
 
-void updateLinearCompassBearings(float bearing, float targetBearing)
-{
-    sendBearingsToCompass(bearing, targetBearing, 0.0f, false);
-}
-
 void updateLinearCompassBearings(float bearing, float targetBearing, float homeBearing)
 {
     sendBearingsToCompass(bearing, targetBearing, homeBearing, true);
 }
 
-void stopLinearCompassDemo()
+void stopLinearCompassDisplay()
 {
     compassTaskShouldRun = false;
 
@@ -592,16 +535,9 @@ void stopLinearCompassDemo()
     }
 }
 
-void demoLinearCompass(uint32_t localMs, bool firstFrame)
+void initCompass()
 {
-    if (firstFrame) {
-        lastBearingSentAt = 0;
-        startCompassTask();
-        updateLinearCompassBearings(scriptedBearing(0), scriptedTargetBearing(0), scriptedHomeBearing(0));
-    }
-
-    if (firstFrame || localMs - lastBearingSentAt >= COMPASS_BEARING_UPDATE_THROTTLE_MS) {
-        updateLinearCompassBearings(scriptedBearing(localMs), scriptedTargetBearing(localMs), scriptedHomeBearing(localMs));
-        lastBearingSentAt = localMs;
-    }
+    startCompassTask();
+    // send some initial values which show all glyphs on screen
+    updateLinearCompassBearings(0 /* bearing */, 40 /* target bearing */, 330 /* home bearing */);
 }
