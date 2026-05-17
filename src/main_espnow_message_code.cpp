@@ -40,6 +40,26 @@ void processIncomingESPNowMessages()
           break;
         }
 
+        case 'H':   // magnetic heading and heading to target for OLED linear compass - fast refresh
+        {
+          ESPNowMessagesReceived++;
+          snprintf(heapMessage,sizeof(heapMessage),"H Msg Rx (esp msg: %hu)", ESPNowMessagesReceived);
+          dumpHeapUsage(heapMessage);
+          const int headingOffset = 4;
+          const int targetHeadingOffset = 8;
+
+          float compassHeading = 0.0;
+          float targetHeading = 0.0;
+
+          memcpy(&compassHeading, rxQueueItemBuffer + headingOffset, sizeof(float));
+          memcpy(&targetHeading, rxQueueItemBuffer + targetHeadingOffset, sizeof(float));
+
+          // hardcoded dummy home for now
+          updateLinearCompassBearings(compassHeading, targetHeading, 170.0);
+
+          break;
+        }
+
         case 'X':   // location, heading and current Target info.
         {
           ESPNowMessagesReceived++;
@@ -122,8 +142,6 @@ void processIncomingESPNowMessages()
             resetCurrentTarget();
           if (mapScreen.get())
             updateLinearCompassBearings(heading, mapScreen->getTargetBearing(), mapScreen->getNearestExitBearing());
-          else
-            updateLinearCompassBearings(5, 10, 15);
         }
         default:
         {

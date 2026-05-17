@@ -3,5 +3,4 @@
 .DS_Store
 src/mercator_secrets.c
 compile_commands.json
-mercator-origins-tiger-io.bin
-.pio/build/release/mercator-origins-tiger-io.bin
+mercator-origins-tiger-io.*

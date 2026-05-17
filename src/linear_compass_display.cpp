@@ -9,8 +9,7 @@ extern U8G2_SSD1306_128X64_NONAME_F_HW_I2C tinyOLEDDisplay;
 namespace {
 const uint8_t OLED_WIDTH=128;
 const uint8_t OLED_HEIGHT=64;
-const uint32_t COMPASS_RENDER_FRAME_MS = 33;
-const uint32_t COMPASS_BEARING_UPDATE_THROTTLE_MS = 20;
+const uint32_t COMPASS_RENDER_FRAME_MS = 50;
 const float COMPASS_DEFAULT_INERTIA = 0.82f;
 const float PIXELS_PER_DEGREE = 1.28f;
 const int16_t COMPASS_TAPE_Y_OFFSET = 4;
@@ -538,6 +537,7 @@ void stopLinearCompassDisplay()
 void initCompass()
 {
     startCompassTask();
+    setLinearCompassInertia(0.5);
     // send some initial values which show all glyphs on screen
     updateLinearCompassBearings(0 /* bearing */, 40 /* target bearing */, 330 /* home bearing */);
 }
