@@ -35,6 +35,7 @@ Sofia, Bulgaria
 #include <M5StickCPlus.h>
 #include <MapScreen_M5.h>
 #include <TFT_eSPI.h>
+#include <U8g2lib.h>
 
 #include <WebSerial.h>
 #include "SerialConfig.h"
@@ -109,6 +110,12 @@ const uint8_t  REED_GOPRO_LOWER_GPIO=0;
 const uint8_t  UNUSED_GPIO_36_PIN=36;
 const uint32_t MERCATOR_DEBOUNCE_MS=100;
 const uint8_t  LEAK_DETECTOR_GPIO=26;
+
+const uint8_t I2C_SDA_GPIO=32;
+const uint8_t I2C_SCK_GPIO=33;
+const uint8_t OLED_I2C_ADDRESS=0x78;
+
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C tinyOLEDDisplay(U8G2_R2, U8X8_PIN_NONE, I2C_SCK_GPIO, I2C_SDA_GPIO);
 
 const uint8_t M5_BUTTON_A_PIN = BUTTON_A_PIN;
 const uint8_t M5_BUTTON_B_PIN = BUTTON_B_PIN;
@@ -361,6 +368,44 @@ void dumpHeapUsage(const char* msg)
 
 std::shared_ptr<TFT_eSprite> clockSprite;
 
+void testHelv14()
+{
+    const char* lines[] = { "Mercator", "Origins" };
+    const uint8_t lineCount = sizeof(lines) / sizeof(lines[0]);
+
+    tinyOLEDDisplay.clearBuffer();
+    tinyOLEDDisplay.setFont(u8g2_font_helvR18_tr);
+    tinyOLEDDisplay.setFontPosBaseline();
+
+    const int16_t displayWidth = tinyOLEDDisplay.getDisplayWidth();
+    const int16_t displayHeight = tinyOLEDDisplay.getDisplayHeight();
+
+    const int16_t ascent = tinyOLEDDisplay.getAscent();
+    const int16_t descent = tinyOLEDDisplay.getDescent(); // negative
+    const int16_t lineHeight = ascent - descent;
+    const int16_t blockHeight = lineCount * lineHeight;
+
+    int16_t y = (displayHeight - blockHeight) / 2 + ascent;
+
+    for (uint8_t i = 0; i < lineCount; ++i) {
+        const int16_t textWidth = tinyOLEDDisplay.getStrWidth(lines[i]);
+        const int16_t x = (displayWidth - textWidth) / 2;
+
+        tinyOLEDDisplay.drawStr(x, y, lines[i]);
+        y += lineHeight;
+    }
+
+    const char* year = "2026";
+    tinyOLEDDisplay.setFont(u8g2_font_helvR10_tr);
+    tinyOLEDDisplay.setFontPosBaseline();
+    const int16_t textWidth = tinyOLEDDisplay.getStrWidth(year);
+    tinyOLEDDisplay.drawStr(displayWidth - textWidth, displayHeight, year);
+    
+
+
+    tinyOLEDDisplay.sendBuffer();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////// PROTECTED - DO NOT ADD CODE IN THE ABOVE PROTECTED AREA - RISK OF OTA FAILURE
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -403,6 +448,16 @@ void setup()
   setPrimaryControls(reedSwitchesPrimaryControl);
 
   M5.Lcd.setTextSize(2);
+
+  tinyOLEDDisplay.setI2CAddress(OLED_I2C_ADDRESS);
+
+  if (!tinyOLEDDisplay.begin()) {
+      USB_SERIAL_PRINTLN("U8g2 begin() FAILED");
+      return;
+  } else {
+      USB_SERIAL_PRINTLN("U8g2 begin() OK");
+      testHelv14();
+  }
 
   if (!disableNTPAtStartupforDevelopment)
     initialiseRTCfromNTP();
