@@ -17,7 +17,7 @@ const int16_t COMPASS_SCROLL_Y_SHIFT = 3;
 const int8_t TURN_ANTICLOCKWISE = -1;
 const int8_t TURN_NONE = 0;
 const int8_t TURN_CLOCKWISE = 1;
-const float TARGET_ALIGNED_DEGREES = 7.0f;
+const float TARGET_ALIGNED_DEGREES = 7.0f;  // If target within +/- 7 degrees then target is aligned.
 
 // Bottom direction arrow tuning.
 const int16_t TURN_ARROW_Y = 58;
@@ -34,11 +34,13 @@ const int16_t INWARD_ARROW_LEFT_OUTER_TIP_X = 36;
 const int16_t INWARD_ARROW_RIGHT_OUTER_TIP_X = 92;
 const uint8_t INWARD_ARROW_TRAVEL_PX = 8;
 const uint16_t INWARD_ARROW_PHASE_MS = 45;
-const bool TARGET_DRAW_AS_GLYPH = false;
-const uint16_t TARGET_GLYPH = 8615;
+
+// Target bearing and home bearing symbols.
+const bool TARGET_DRAW_AS_GLYPH = true;
+const uint16_t TARGET_GLYPH = 9661;
 const int16_t TARGET_GLYPH_BASELINE_Y = 15;
 const int16_t TARGET_GLYPH_CLIP_MARGIN = 8;
-const uint16_t HOME_GLYPH = 9661;
+const uint16_t HOME_GLYPH = 8615;
 const int16_t HOME_GLYPH_BASELINE_Y = 15;
 const int16_t HOME_GLYPH_CLIP_MARGIN = 8;
 
@@ -510,7 +512,8 @@ void setLinearCompassInertia(float inertia)
 
 void updateLinearCompassBearings(float bearing, float targetBearing, float homeBearing)
 {
-    sendBearingsToCompass(bearing, targetBearing, homeBearing, true);
+    // Show home bearing set to false if -1 passed in.
+    sendBearingsToCompass(bearing, targetBearing, (homeBearing != -1 ? homeBearing : 0.0), (homeBearing != -1.0));
 }
 
 void stopLinearCompassDisplay()
@@ -538,6 +541,5 @@ void initCompass()
 {
     startCompassTask();
     setLinearCompassInertia(0.5);
-    // send some initial values which show all glyphs on screen
-    updateLinearCompassBearings(0 /* bearing */, 40 /* target bearing */, 330 /* home bearing */);
+    updateLinearCompassBearings(0, 0);
 }

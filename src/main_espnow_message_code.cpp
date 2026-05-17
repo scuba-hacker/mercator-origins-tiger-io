@@ -54,8 +54,7 @@ void processIncomingESPNowMessages()
           memcpy(&compassHeading, rxQueueItemBuffer + headingOffset, sizeof(float));
           memcpy(&targetHeading, rxQueueItemBuffer + targetHeadingOffset, sizeof(float));
 
-          // hardcoded dummy home for now
-          updateLinearCompassBearings(compassHeading, targetHeading, 170.0);
+          updateLinearCompassBearings(compassHeading, targetHeading);
 
           break;
         }
@@ -141,7 +140,7 @@ void processIncomingESPNowMessages()
           else if (display_mode == DISPLAY_CURRENT_TARGET && refreshTargetShown)
             resetCurrentTarget();
           if (mapScreen.get())
-            updateLinearCompassBearings(heading, mapScreen->getTargetBearing(), mapScreen->getNearestExitBearing());
+            updateLinearCompassBearings(heading, mapScreen->getTargetBearing());
         }
         default:
         {
