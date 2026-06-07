@@ -75,8 +75,10 @@ void processIncomingESPNowMessages()
           const int headingOffset = 24;
           const int depthOffset = 32;
           const int courseOffset = 36;
-          const int x_message_flags_offset = 40;
-          const int currentTargetOffset = 44;
+          const int targetHeadingOffset = 40;
+          const int targetDistanceOffset = 44;
+          const int x_message_flags_offset = 48;
+          const int currentTargetOffset = 52;
                     
           char targetCode[7];
 
@@ -91,6 +93,8 @@ void processIncomingESPNowMessages()
           memcpy(&heading,   rxQueueItemBuffer + headingOffset, sizeof(double));
           memcpy(&depth,     rxQueueItemBuffer + depthOffset, sizeof(float));
           memcpy(&course,    rxQueueItemBuffer + courseOffset, sizeof(float));
+          memcpy(&targetHeadingFromMako,   rxQueueItemBuffer + targetHeadingOffset, sizeof(float));
+          memcpy(&targetDistanceFromMako,   rxQueueItemBuffer + targetDistanceOffset, sizeof(float));
           memcpy(&x_message_flags,   rxQueueItemBuffer + x_message_flags_offset, sizeof(uint32_t));
 
           if (*currentTarget == '\0' ||
@@ -113,8 +117,9 @@ void processIncomingESPNowMessages()
           USB_SERIAL_PRINTF("currentTarget: %s\n",currentTarget);
           USB_SERIAL_PRINTF("latitude: %f\n",latitude);
           USB_SERIAL_PRINTF("longitude: %f\n",longitude);
-          USB_SERIAL_PRINTF("heading: %f\n",heading);
-          USB_SERIAL_PRINTF("depth: %f\n",depth);
+          USB_SERIAL_PRINTF("heading: %f course: %f depth: %f\n",heading, course, depth);
+          USB_SERIAL_PRINTF("currentTarget: %s\n",currentTarget);
+          USB_SERIAL_PRINTF("targetHeadingFromMako: %f targetDistanceFromMako: %f\n",targetHeadingFromMako, targetDistanceFromMako);
           USB_SERIAL_PRINTF("Fix Msgs: %d\n",fixMessagesReceived);
           USB_SERIAL_PRINTF("No Fix Msgs: %d\n",noFixMessagesReceived);
 
