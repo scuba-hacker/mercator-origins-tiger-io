@@ -128,7 +128,7 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
         DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
         if (!err)
         {
-          long timezoneOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
+          timezoneOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
           M5.Lcd.printf("offset:%ld\n",timezoneOffset);
           BUFFER_LOG_PRINTF("offset:%ld ",timezoneOffset);
 
