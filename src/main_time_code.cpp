@@ -28,7 +28,7 @@ void  initialiseRTCfromNTP()
 
   const bool wifiOnly = true;
 
-  const int maxWifiScanAttempts = 2;  
+  const int maxWifiScanAttempts = 8;
   if (WiFi.status() == WL_CONNECTED || connectToWiFiAndInitOTA(wifiOnly,maxWifiScanAttempts,"Get NTP Time..."))
   {
     M5.Lcd.println("NTP Wifi OK");
@@ -41,6 +41,7 @@ void  initialiseRTCfromNTP()
       // Second param is total timezone offset (raw_offset + dst_offset)
       // Third param is 0 (we don't use separate DST offset)
       updateRTCFromNTP("initialiseRTCfromNTP",detectedTimezoneOffset,0);
+      delay(1000);
     }
     else
     {
@@ -127,8 +128,7 @@ bool useLondonTimezoneOffset(long& timezoneOffset)
         DeserializationError err = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
         if (!err)
         {
-          long gmtOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
-          timezoneOffset = -gmtOffset;                      // negate because configTime negates it again
+          long timezoneOffset = (long)(doc["gmtOffset"] | 0);    // seconds (includes DST)
           M5.Lcd.printf("offset:%ld\n",timezoneOffset);
           BUFFER_LOG_PRINTF("offset:%ld ",timezoneOffset);
 
