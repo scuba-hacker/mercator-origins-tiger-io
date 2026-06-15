@@ -18,8 +18,13 @@ const int8_t TURN_ANTICLOCKWISE = -1;
 const int8_t TURN_NONE = 0;
 const int8_t TURN_CLOCKWISE = 1;
 const float TARGET_ALIGNED_DEGREES = 7.0f;  // If target within +/- 7 degrees then target is aligned.
+const bool ENABLE_TARGET_ARROW_FLASH = false;
+const float TARGET_ARROW_FLASH_DEGREES = 3.0f;  // Flash aligned arrows if target is within +/- 3 degrees.
 const bool SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET = true; // Always shows the pointing arrows if set to true, otherwise only show if the target icon is off screen
 const bool HIDE_COMPASS_TAPE_WHEN_TARGET_ALIGNED = true;  // set to true for larger arrows when on target
+const uint16_t TARGET_ARROW_FLASH_PERIOD_MS = 750;
+const uint8_t TARGET_ARROW_FLASH_ON_PERCENT = 65;
+const uint8_t TARGET_ARROW_FLASH_OFF_PERCENT = 35;
 
 // Bottom direction arrow tuning.
 const int16_t TURN_ARROW_Y = 58;
@@ -48,6 +53,9 @@ const uint8_t ALIGNED_CUE_TRAVEL_PX = 8;
 const uint16_t ALIGNED_CUE_PHASE_MS = 45;
 const int16_t ALIGNED_CUE_GUIDE_TOP_Y = 18;
 const int16_t ALIGNED_CUE_GUIDE_HEIGHT_PX = 25;
+const int16_t ALIGNED_CUE_POINTER_BASE_Y = 23;
+const uint8_t ALIGNED_CUE_POINTER_HALF_WIDTH_PX = 5;
+const uint8_t ALIGNED_CUE_POINTER_HEIGHT_PX = 7;
 
 // Target bearing and home bearing symbols.
 const bool TARGET_DRAW_AS_GLYPH = true;
@@ -309,6 +317,22 @@ int8_t shortestTurnDirection(float delta)
     return TURN_NONE;
 }
 
+bool isAlignedArrowFlashOn()
+{
+    if (TARGET_ARROW_FLASH_PERIOD_MS == 0) {
+        return true;
+    }
+
+    const uint16_t dutyTotal = (uint16_t)TARGET_ARROW_FLASH_ON_PERCENT + (uint16_t)TARGET_ARROW_FLASH_OFF_PERCENT;
+    if (dutyTotal == 0) {
+        return true;
+    }
+
+    const uint32_t cycleMs = millis() % TARGET_ARROW_FLASH_PERIOD_MS;
+    const uint32_t onWindowMs = ((uint32_t)TARGET_ARROW_FLASH_PERIOD_MS * TARGET_ARROW_FLASH_ON_PERCENT) / dutyTotal;
+    return cycleMs < onWindowMs;
+}
+
 void drawRightArrowHeadSized(int16_t tipX, int16_t y, int16_t headWidth, int16_t headHalfHeight)
 {
     for (int16_t x = tipX - headWidth; x <= tipX; x++) {
@@ -419,6 +443,8 @@ void drawBottomInwardArrows()
 
 void drawAlignedTargetGuide(int16_t centerX)
 {
+    tinyOLEDDisplay.setDrawColor(1);
+    drawFilledTriangleDown(centerX, ALIGNED_CUE_POINTER_BASE_Y, ALIGNED_CUE_POINTER_HALF_WIDTH_PX, ALIGNED_CUE_POINTER_HEIGHT_PX);
     tinyOLEDDisplay.drawVLine(centerX - 1, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
     tinyOLEDDisplay.drawVLine(centerX, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
     tinyOLEDDisplay.drawVLine(centerX + 1, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
@@ -450,11 +476,13 @@ void renderCompass(float bearing, float targetBearing, float homeBearing, bool h
     const int16_t centerX = OLED_WIDTH / 2;
     float targetDelta = angleDelta(targetBearing, bearing);
     bool targetAligned = fabsf(targetDelta) <= TARGET_ALIGNED_DEGREES;
+    bool flashAlignedArrows = ENABLE_TARGET_ARROW_FLASH && fabsf(targetDelta) <= TARGET_ARROW_FLASH_DEGREES;
     int8_t targetTurnDirection = shortestTurnDirection(targetDelta);
     int16_t targetX = centerX + (int16_t)(targetDelta * PIXELS_PER_DEGREE);
     int16_t homeX = centerX + (int16_t)(angleDelta(homeBearing, bearing) * PIXELS_PER_DEGREE);
     bool targetVisible = isTargetVisible(targetX);
     bool showLargeAlignedCue = targetAligned && HIDE_COMPASS_TAPE_WHEN_TARGET_ALIGNED;
+    bool drawAlignedArrowsThisFrame = !flashAlignedArrows || isAlignedArrowFlashOn();
 
     if (!showLargeAlignedCue) {
         int16_t startTick = ((int16_t)floorf((bearing - 95.0f) / 5.0f)) * 5;
@@ -488,10 +516,12 @@ void renderCompass(float bearing, float targetBearing, float homeBearing, bool h
 
     drawBearingReadout(bearing,targetBearing);
     if (targetAligned) {
-        if (showLargeAlignedCue) {
-            drawLargeAlignedCue(centerX);
-        } else {
-            drawBottomInwardArrows();
+        if (drawAlignedArrowsThisFrame) {
+            if (showLargeAlignedCue) {
+                drawLargeAlignedCue(centerX);
+            } else {
+                drawBottomInwardArrows();
+            }
         }
     } else if (SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET || !targetVisible) {
         drawBottomTurnArrow(targetTurnDirection);
