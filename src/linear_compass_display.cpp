@@ -19,6 +19,7 @@ const int8_t TURN_NONE = 0;
 const int8_t TURN_CLOCKWISE = 1;
 const float TARGET_ALIGNED_DEGREES = 7.0f;  // If target within +/- 7 degrees then target is aligned.
 const bool SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET = true; // Always shows the pointing arrows if set to true, otherwise only show if the target icon is off screen
+const bool HIDE_COMPASS_TAPE_WHEN_TARGET_ALIGNED = true;  // set to true for larger arrows when on target
 
 // Bottom direction arrow tuning.
 const int16_t TURN_ARROW_Y = 58;
@@ -35,6 +36,18 @@ const int16_t INWARD_ARROW_LEFT_OUTER_TIP_X = 36;
 const int16_t INWARD_ARROW_RIGHT_OUTER_TIP_X = 92;
 const uint8_t INWARD_ARROW_TRAVEL_PX = 8;
 const uint16_t INWARD_ARROW_PHASE_MS = 45;
+
+// Larger aligned-state cue shown when the rolling tape is hidden.
+const int16_t ALIGNED_CUE_Y = 33;
+const int16_t ALIGNED_CUE_LENGTH_PX = 38;
+const int16_t ALIGNED_CUE_HEAD_WIDTH_PX = 15;
+const int16_t ALIGNED_CUE_HEAD_HALF_HEIGHT_PX = 9;
+const int16_t ALIGNED_CUE_STEM_HALF_HEIGHT_PX = 4;
+const int16_t ALIGNED_CUE_CENTER_GAP_PX = 16;
+const uint8_t ALIGNED_CUE_TRAVEL_PX = 8;
+const uint16_t ALIGNED_CUE_PHASE_MS = 45;
+const int16_t ALIGNED_CUE_GUIDE_TOP_Y = 18;
+const int16_t ALIGNED_CUE_GUIDE_HEIGHT_PX = 25;
 
 // Target bearing and home bearing symbols.
 const bool TARGET_DRAW_AS_GLYPH = true;
@@ -296,42 +309,62 @@ int8_t shortestTurnDirection(float delta)
     return TURN_NONE;
 }
 
-void drawRightArrowHead(int16_t tipX, int16_t y)
+void drawRightArrowHeadSized(int16_t tipX, int16_t y, int16_t headWidth, int16_t headHalfHeight)
 {
-    for (int16_t x = tipX - TURN_ARROW_HEAD_WIDTH_PX; x <= tipX; x++) {
-        int16_t halfHeight = ((tipX - x) * TURN_ARROW_HEAD_HALF_HEIGHT_PX) / TURN_ARROW_HEAD_WIDTH_PX;
+    for (int16_t x = tipX - headWidth; x <= tipX; x++) {
+        int16_t halfHeight = ((tipX - x) * headHalfHeight) / headWidth;
         tinyOLEDDisplay.drawVLine(x, y - halfHeight, halfHeight * 2 + 1);
     }
+}
+
+void drawLeftArrowHeadSized(int16_t tipX, int16_t y, int16_t headWidth, int16_t headHalfHeight)
+{
+    for (int16_t x = tipX; x <= tipX + headWidth; x++) {
+        int16_t halfHeight = ((x - tipX) * headHalfHeight) / headWidth;
+        tinyOLEDDisplay.drawVLine(x, y - halfHeight, halfHeight * 2 + 1);
+    }
+}
+
+void drawRightArrowHead(int16_t tipX, int16_t y)
+{
+    drawRightArrowHeadSized(tipX, y, TURN_ARROW_HEAD_WIDTH_PX, TURN_ARROW_HEAD_HALF_HEIGHT_PX);
 }
 
 void drawLeftArrowHead(int16_t tipX, int16_t y)
 {
-    for (int16_t x = tipX; x <= tipX + TURN_ARROW_HEAD_WIDTH_PX; x++) {
-        int16_t halfHeight = ((x - tipX) * TURN_ARROW_HEAD_HALF_HEIGHT_PX) / TURN_ARROW_HEAD_WIDTH_PX;
-        tinyOLEDDisplay.drawVLine(x, y - halfHeight, halfHeight * 2 + 1);
-    }
+    drawLeftArrowHeadSized(tipX, y, TURN_ARROW_HEAD_WIDTH_PX, TURN_ARROW_HEAD_HALF_HEIGHT_PX);
 }
 
-void drawRightArrowStem(int16_t tailX, int16_t headBaseX, int16_t y)
+void drawRightArrowStemSized(int16_t tailX, int16_t headBaseX, int16_t y, int16_t stemHalfHeight)
 {
     if (headBaseX <= tailX + 2) {
         return;
     }
 
     tinyOLEDDisplay.drawVLine(tailX, y - 1, 3);
-    tinyOLEDDisplay.drawVLine(tailX + 1, y - TURN_ARROW_STEM_HALF_HEIGHT_PX, TURN_ARROW_STEM_HALF_HEIGHT_PX * 2 + 1);
-    tinyOLEDDisplay.drawBox(tailX + 2, y - TURN_ARROW_STEM_HALF_HEIGHT_PX, headBaseX - tailX - 1, TURN_ARROW_STEM_HALF_HEIGHT_PX * 2 + 1);
+    tinyOLEDDisplay.drawVLine(tailX + 1, y - stemHalfHeight, stemHalfHeight * 2 + 1);
+    tinyOLEDDisplay.drawBox(tailX + 2, y - stemHalfHeight, headBaseX - tailX - 1, stemHalfHeight * 2 + 1);
 }
 
-void drawLeftArrowStem(int16_t headBaseX, int16_t tailX, int16_t y)
+void drawLeftArrowStemSized(int16_t headBaseX, int16_t tailX, int16_t y, int16_t stemHalfHeight)
 {
     if (headBaseX >= tailX - 2) {
         return;
     }
 
-    tinyOLEDDisplay.drawBox(headBaseX, y - TURN_ARROW_STEM_HALF_HEIGHT_PX, tailX - headBaseX - 1, TURN_ARROW_STEM_HALF_HEIGHT_PX * 2 + 1);
-    tinyOLEDDisplay.drawVLine(tailX - 1, y - TURN_ARROW_STEM_HALF_HEIGHT_PX, TURN_ARROW_STEM_HALF_HEIGHT_PX * 2 + 1);
+    tinyOLEDDisplay.drawBox(headBaseX, y - stemHalfHeight, tailX - headBaseX - 1, stemHalfHeight * 2 + 1);
+    tinyOLEDDisplay.drawVLine(tailX - 1, y - stemHalfHeight, stemHalfHeight * 2 + 1);
     tinyOLEDDisplay.drawVLine(tailX, y - 1, 3);
+}
+
+void drawRightArrowStem(int16_t tailX, int16_t headBaseX, int16_t y)
+{
+    drawRightArrowStemSized(tailX, headBaseX, y, TURN_ARROW_STEM_HALF_HEIGHT_PX);
+}
+
+void drawLeftArrowStem(int16_t headBaseX, int16_t tailX, int16_t y)
+{
+    drawLeftArrowStemSized(headBaseX, tailX, y, TURN_ARROW_STEM_HALF_HEIGHT_PX);
 }
 
 void drawBottomTurnArrow(int8_t direction)
@@ -384,44 +417,82 @@ void drawBottomInwardArrows()
     drawLeftArrowHead(rightTipX, y);
 }
 
+void drawAlignedTargetGuide(int16_t centerX)
+{
+    tinyOLEDDisplay.drawVLine(centerX - 1, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
+    tinyOLEDDisplay.drawVLine(centerX, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
+    tinyOLEDDisplay.drawVLine(centerX + 1, ALIGNED_CUE_GUIDE_TOP_Y, ALIGNED_CUE_GUIDE_HEIGHT_PX);
+}
+
+void drawLargeAlignedCue(int16_t centerX)
+{
+    const uint16_t phaseMs = ALIGNED_CUE_PHASE_MS == 0 ? 1 : ALIGNED_CUE_PHASE_MS;
+    const uint8_t phase = (millis() / phaseMs) % (ALIGNED_CUE_TRAVEL_PX * 2 + 1);
+    const uint8_t travel = phase <= ALIGNED_CUE_TRAVEL_PX ? phase : ALIGNED_CUE_TRAVEL_PX * 2 - phase;
+
+    const int16_t leftTipX = centerX - ALIGNED_CUE_CENTER_GAP_PX + travel;
+    const int16_t leftTailX = leftTipX - ALIGNED_CUE_LENGTH_PX;
+    drawRightArrowStemSized(leftTailX, leftTipX - ALIGNED_CUE_HEAD_WIDTH_PX, ALIGNED_CUE_Y, ALIGNED_CUE_STEM_HALF_HEIGHT_PX);
+    drawRightArrowHeadSized(leftTipX, ALIGNED_CUE_Y, ALIGNED_CUE_HEAD_WIDTH_PX, ALIGNED_CUE_HEAD_HALF_HEIGHT_PX);
+
+    const int16_t rightTipX = centerX + ALIGNED_CUE_CENTER_GAP_PX - travel;
+    const int16_t rightTailX = rightTipX + ALIGNED_CUE_LENGTH_PX;
+    drawLeftArrowStemSized(rightTipX + ALIGNED_CUE_HEAD_WIDTH_PX, rightTailX, ALIGNED_CUE_Y, ALIGNED_CUE_STEM_HALF_HEIGHT_PX);
+    drawLeftArrowHeadSized(rightTipX, ALIGNED_CUE_Y, ALIGNED_CUE_HEAD_WIDTH_PX, ALIGNED_CUE_HEAD_HALF_HEIGHT_PX);
+}
+
 void renderCompass(float bearing, float targetBearing, float homeBearing, bool hasHomeBearing)
 {
     tinyOLEDDisplay.clearBuffer();
     tinyOLEDDisplay.setDrawColor(1);
     tinyOLEDDisplay.setFontMode(1);
 
-    int16_t startTick = ((int16_t)floorf((bearing - 95.0f) / 5.0f)) * 5;
-    for (int16_t tick = startTick; tick <= startTick + 190; tick += 5) {
-        uint16_t tickDegrees = (uint16_t)((tick % 360 + 360) % 360);
-        int16_t x = 64 + (int16_t)(angleDelta((float)tickDegrees, bearing) * PIXELS_PER_DEGREE);
-        if (x >= 5 && x <= 123) {
-            drawTick(x, tickDegrees);
-        }
-    }
-
-    drawFilledTriangleDown(64, 10 + COMPASS_TAPE_Y_OFFSET, 5, 7);
-
+    const int16_t centerX = OLED_WIDTH / 2;
     float targetDelta = angleDelta(targetBearing, bearing);
     bool targetAligned = fabsf(targetDelta) <= TARGET_ALIGNED_DEGREES;
     int8_t targetTurnDirection = shortestTurnDirection(targetDelta);
-    int16_t targetX = 64 + (int16_t)(targetDelta * PIXELS_PER_DEGREE);
-    int16_t homeX = 64 + (int16_t)(angleDelta(homeBearing, bearing) * PIXELS_PER_DEGREE);
+    int16_t targetX = centerX + (int16_t)(targetDelta * PIXELS_PER_DEGREE);
+    int16_t homeX = centerX + (int16_t)(angleDelta(homeBearing, bearing) * PIXELS_PER_DEGREE);
     bool targetVisible = isTargetVisible(targetX);
-    tinyOLEDDisplay.setDrawColor(2);
-    tinyOLEDDisplay.drawVLine(63, 12 + COMPASS_TAPE_Y_OFFSET, 33);
-    tinyOLEDDisplay.drawVLine(64, 12 + COMPASS_TAPE_Y_OFFSET, 33);
-    tinyOLEDDisplay.drawVLine(65, 12 + COMPASS_TAPE_Y_OFFSET, 33);
-    if (targetVisible) {
-        drawTargetMarker(targetX);
+    bool showLargeAlignedCue = targetAligned && HIDE_COMPASS_TAPE_WHEN_TARGET_ALIGNED;
+
+    if (!showLargeAlignedCue) {
+        int16_t startTick = ((int16_t)floorf((bearing - 95.0f) / 5.0f)) * 5;
+        for (int16_t tick = startTick; tick <= startTick + 190; tick += 5) {
+            uint16_t tickDegrees = (uint16_t)((tick % 360 + 360) % 360);
+            int16_t x = centerX + (int16_t)(angleDelta((float)tickDegrees, bearing) * PIXELS_PER_DEGREE);
+            if (x >= 5 && x <= 123) {
+                drawTick(x, tickDegrees);
+            }
+        }
+
+        drawFilledTriangleDown(centerX, 10 + COMPASS_TAPE_Y_OFFSET, 5, 7);
     }
-    if (hasHomeBearing) {
-        drawHomeSymbol(homeX);
+
+    tinyOLEDDisplay.setDrawColor(2);
+    if (showLargeAlignedCue) {
+        drawAlignedTargetGuide(centerX);
+        drawTargetMarker(targetX);
+    } else {
+        tinyOLEDDisplay.drawVLine(centerX - 1, 12 + COMPASS_TAPE_Y_OFFSET, 33);
+        tinyOLEDDisplay.drawVLine(centerX, 12 + COMPASS_TAPE_Y_OFFSET, 33);
+        tinyOLEDDisplay.drawVLine(centerX + 1, 12 + COMPASS_TAPE_Y_OFFSET, 33);
+        if (targetVisible) {
+            drawTargetMarker(targetX);
+        }
+        if (hasHomeBearing) {
+            drawHomeSymbol(homeX);
+        }
     }
     tinyOLEDDisplay.setDrawColor(1);
 
     drawBearingReadout(bearing,targetBearing);
     if (targetAligned) {
-        drawBottomInwardArrows();
+        if (showLargeAlignedCue) {
+            drawLargeAlignedCue(centerX);
+        } else {
+            drawBottomInwardArrows();
+        }
     } else if (SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET || !targetVisible) {
         drawBottomTurnArrow(targetTurnDirection);
     }
