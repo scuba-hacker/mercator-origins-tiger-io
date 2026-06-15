@@ -371,7 +371,7 @@ void dumpHeapUsage(const char* msg)
 
 std::shared_ptr<TFT_eSprite> clockSprite;
 
-void testHelv14()
+void oledSplashScreen()
 {
     const char* lines[] = { "Mercator", "Origins" };
     const uint8_t lineCount = sizeof(lines) / sizeof(lines[0]);
@@ -459,7 +459,7 @@ void setup()
       return;
   } else {
       USB_SERIAL_PRINTLN("U8g2 begin() OK");
-      testHelv14();
+      oledSplashScreen();
   }
 
   if (!disableNTPAtStartupforDevelopment)

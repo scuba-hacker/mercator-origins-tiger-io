@@ -295,7 +295,6 @@ void drawCurrentTargetDisplay()
     M5.Lcd.fillScreen(TFT_BLACK);
     refreshTargetShown = false;
   }
-  bool targetLive = false;
 
   const uint8_t textSize=1;
   const uint8_t textFont=4;

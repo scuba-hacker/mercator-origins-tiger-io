@@ -18,6 +18,7 @@ const int8_t TURN_ANTICLOCKWISE = -1;
 const int8_t TURN_NONE = 0;
 const int8_t TURN_CLOCKWISE = 1;
 const float TARGET_ALIGNED_DEGREES = 7.0f;  // If target within +/- 7 degrees then target is aligned.
+const bool SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET = true; // Always shows the pointing arrows if set to true, otherwise only show if the target icon is off screen
 
 // Bottom direction arrow tuning.
 const int16_t TURN_ARROW_Y = 58;
@@ -405,11 +406,12 @@ void renderCompass(float bearing, float targetBearing, float homeBearing, bool h
     int8_t targetTurnDirection = shortestTurnDirection(targetDelta);
     int16_t targetX = 64 + (int16_t)(targetDelta * PIXELS_PER_DEGREE);
     int16_t homeX = 64 + (int16_t)(angleDelta(homeBearing, bearing) * PIXELS_PER_DEGREE);
+    bool targetVisible = isTargetVisible(targetX);
     tinyOLEDDisplay.setDrawColor(2);
     tinyOLEDDisplay.drawVLine(63, 12 + COMPASS_TAPE_Y_OFFSET, 33);
     tinyOLEDDisplay.drawVLine(64, 12 + COMPASS_TAPE_Y_OFFSET, 33);
     tinyOLEDDisplay.drawVLine(65, 12 + COMPASS_TAPE_Y_OFFSET, 33);
-    if (isTargetVisible(targetX)) {
+    if (targetVisible) {
         drawTargetMarker(targetX);
     }
     if (hasHomeBearing) {
@@ -420,7 +422,7 @@ void renderCompass(float bearing, float targetBearing, float homeBearing, bool h
     drawBearingReadout(bearing,targetBearing);
     if (targetAligned) {
         drawBottomInwardArrows();
-    } else if (!isTargetVisible(targetX)) {
+    } else if (SHOW_TURN_ARROWS_WITH_VISIBLE_TARGET || !targetVisible) {
         drawBottomTurnArrow(targetTurnDirection);
     }
 
